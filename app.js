@@ -355,7 +355,7 @@ function calEvRow(e, compact) {
   return `<div class="row" style="border-left:4px solid ${WHO_COLOR(e.who)};${compact ? 'padding:9px 12px;margin-bottom:6px' : ''}">
     <span class="ric">${icon(e.src === 'ics' ? 'case' : 'cal', compact ? 16 : 18)}</span>
     <div class="grow" ${e.src !== 'ics' ? 'data-action="edit-event" data-id="' + e.id + '"' : ''}><div class="title" ${compact ? 'style="font-size:14px"' : ''}>${esc(e.title)}</div>
-    <div class="meta">${e.time ? esc(e.time) + ' Uhr · ' : ''}${e.src === 'ics' ? 'Outlook-Termin' : 'eingetragen'} · ${e.who === 'beide' ? 'gemeinsam' : esc(nameOf(e.who))}</div></div>
+    <div class="meta">${e.time ? esc(e.time) + ' Uhr · ' : ''}${e.src === 'ics' ? 'Outlook-Termin' : 'eingetragen'} · ${e.who === 'beide' ? 'gemeinsam' : esc(nameOf(e.who))}${e.repeat ? ' · ↻ ' + REPEAT_LABEL[e.repeat] : ''}</div></div>
     ${whoChip(e.who)}
     ${e.src !== 'ics' ? '<button class="check" data-action="del-event" data-id="' + e.id + '" style="border-color:#E0C4B8;color:#A54B32">' + icon('x', 13) + '</button>' : ''}
   </div>`;
@@ -490,12 +490,22 @@ function openEventSheet(dateISO, id) {
       <div><label class="f">Datum</label><input class="f" id="evDate" type="date" value="${ev ? ev.date : dateISO}"></div>
       <div><label class="f">Uhrzeit</label><input class="f" id="evTime" type="time" value="${ev ? esc(ev.time || '') : ''}"></div>
     </div>
-    <label class="f">Wer?</label>
-    <select class="f" id="evWho">
-      <option value="beide" ${w === 'beide' ? 'selected' : ''}>Wir beide</option>
-      <option value="stefan" ${w === 'stefan' ? 'selected' : ''}>Stefan</option>
-      <option value="linda" ${w === 'linda' ? 'selected' : ''}>Linda</option>
-    </select>
+    <div class="frow">
+      <div><label class="f">Wer?</label>
+      <select class="f" id="evWho">
+        <option value="beide" ${w === 'beide' ? 'selected' : ''}>Wir beide</option>
+        <option value="stefan" ${w === 'stefan' ? 'selected' : ''}>Stefan</option>
+        <option value="linda" ${w === 'linda' ? 'selected' : ''}>Linda</option>
+      </select></div>
+      <div><label class="f">Wiederholen?</label>
+      <select class="f" id="evRepeat">
+        <option value="" ${!ev || !ev.repeat ? 'selected' : ''}>einmalig</option>
+        <option value="weekly" ${ev && ev.repeat === 'weekly' ? 'selected' : ''}>wöchentlich</option>
+        <option value="biweekly" ${ev && ev.repeat === 'biweekly' ? 'selected' : ''}>alle 2 Wochen</option>
+        <option value="monthly" ${ev && ev.repeat === 'monthly' ? 'selected' : ''}>monatlich</option>
+      </select></div>
+    </div>
+    ${ev && ev.repeat ? '<div class="mut" style="margin-top:6px">Änderungen und Löschen gelten für die ganze Serie.</div>' : ''}
     <div style="margin-top:16px;display:flex;gap:8px">
       ${ev ? '<button class="btn danger small" data-action="del-event-sheet" data-id="' + ev.id + '">Löschen</button>' : ''}
       <button class="btn" style="flex:1" data-action="save-event" data-id="${ev ? ev.id : ''}">${ev ? 'Speichern' : 'Eintragen'}</button>
@@ -519,7 +529,10 @@ function renderKueche() {
 
 function renderMealplan() {
   const today = todayISO();
-  let html = `<button class="btn ghost small full" data-action="meal-fill">${icon('spark', 16)} Leere Tage mit Vorschlägen füllen</button>`;
+  let html = `<div class="frow" style="margin-bottom:4px">
+    <button class="btn ghost small" data-action="presence-open">Wer ist wann da?</button>
+    <button class="btn ghost small" data-action="meal-fill">${icon('spark', 15)} Vorschläge</button>
+  </div>`;
   let curWeek = null;
   for (let i = 0; i < 14; i++) {
     const d = addDays(new Date(), i);
@@ -531,14 +544,49 @@ function renderMealplan() {
       html += `<h2 class="sect">${off === 0 ? 'Diese Woche' : off === 1 ? 'Nächste Woche' : 'Übernächste Woche'}</h2>`;
     }
     const m = DATA.meals[iso];
+    const wegAbends = ['stefan', 'linda'].filter(p => !isPresent(iso, p, 'a'));
+    const hinweis = wegAbends.length === 2
+      ? '<span class="sm" style="color:var(--clay)">Beide abends unterwegs</span>'
+      : wegAbends.length === 1
+        ? '<span class="sm" style="color:var(--clay)">' + nameOf(wegAbends[0]) + ' ist abends nicht da</span>'
+        : '';
     html += `<div class="mealday ${iso === today ? 'today' : ''}">
       <div class="d"><span class="w">${WD[(d.getDay() + 6) % 7]}</span><span class="n">${d.getDate()}</span></div>
       <button class="slot ${m ? 'filled' : ''}" data-action="meal-slot" data-iso="${iso}">
         ${m ? esc(mealName(m)) + (m.rid ? '<span class="sm">Rezept hinterlegt – antippen für Zutaten</span>' : '') : 'Was kochen wir?'}
+        ${hinweis}
       </button>
     </div>`;
   }
   return html;
+}
+
+function openPresenceSheet() {
+  let rows = '';
+  for (let i = 0; i < 7; i++) {
+    const d = addDays(new Date(), i);
+    const iso = toISO(d);
+    const chip = (slot, label) => {
+      const on = isPresent(iso, me(), slot);
+      return `<button class="chip" data-action="presence-toggle" data-iso="${iso}" data-slot="${slot}"
+        style="cursor:pointer;padding:7px 12px;${on ? 'background:var(--olive);color:#fff' : 'background:transparent;border:1px solid var(--line);color:var(--muted);text-decoration:line-through'}">${label}</button>`;
+    };
+    const pM = isPresent(iso, partner(), 'm'), pA = isPresent(iso, partner(), 'a');
+    rows += `<div class="row" style="align-items:center">
+      <div class="grow">
+        <div class="title" style="font-size:14px">${WD[(d.getDay() + 6) % 7]}, ${d.getDate()}.${d.getMonth() + 1}.</div>
+        <div class="meta">${esc(nameOf(partner()))}: Mittag ${pM ? '✓' : '–'} · Abend ${pA ? '✓' : '–'}</div>
+      </div>
+      ${chip('m', 'Mittag')}
+      ${chip('a', 'Abend')}
+    </div>`;
+  }
+  openSheet(`
+    <h2>Wann bist du da, ${esc(nameOf(me()))}?</h2>
+    <p class="mut">Tippe weg, was bei dir ausfällt – ${esc(nameOf(partner()))} sieht es im Kochplan.</p>
+    ${rows}
+    <div style="margin-top:12px"><button class="btn full" data-action="close-sheet">Fertig</button></div>
+  `);
 }
 
 function openMealSheet(iso) {
@@ -882,7 +930,7 @@ function handleAction(a, el) {
       const title = document.getElementById('evTitle').value.trim();
       const date = document.getElementById('evDate').value;
       if (!title || !date) break;
-      const fields = { title, date, time: document.getElementById('evTime').value, who: document.getElementById('evWho').value };
+      const fields = { title, date, time: document.getElementById('evTime').value, who: document.getElementById('evWho').value, repeat: document.getElementById('evRepeat').value };
       const ev = id ? DATA.events.find(e => e.id === id) : null;
       if (ev) Object.assign(ev, fields);
       else DATA.events.push({ id: uid(), ...fields });
@@ -895,6 +943,11 @@ function handleAction(a, el) {
 
     /* Küche */
     case 'kseg': state.kueche = el.dataset.v; render(); break;
+    case 'presence-open': openPresenceSheet(); break;
+    case 'presence-toggle':
+      setPresence(el.dataset.iso, me(), el.dataset.slot, !isPresent(el.dataset.iso, me(), el.dataset.slot));
+      openPresenceSheet();
+      break;
     case 'meal-slot': openMealSheet(el.dataset.iso); break;
     case 'meal-set': DATA.meals[el.dataset.iso] = { rid: el.dataset.rid }; save(); closeSheet(); render(); break;
     case 'meal-set-text': {

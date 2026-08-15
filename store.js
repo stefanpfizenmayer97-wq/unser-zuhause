@@ -80,6 +80,7 @@ const SEED = {
     { id: 'r7', name: 'Wraps mit Hähnchen', ing: ['Wraps', 'Hähnchen', 'Salat', 'Tomaten', 'Creme fraiche'] },
   ],
   meals: {},
+  presence: {},
   shopping: [],
   us: {
     ideas: ['Picknick am Fluss', 'Zusammen Sushi selber machen', 'Abendspaziergang und ein Eis', 'Brettspielabend', 'Fotodate in der Stadt'],
@@ -144,18 +145,47 @@ function toggleTask(t) {
 }
 function openTasks() { return DATA.tasks.filter(t => !taskIsDone(t)); }
 
-/* ---------- Kalender ---------- */
+/* ---------- Kalender (inkl. wiederkehrender Termine) ---------- */
+const REPEAT_LABEL = { weekly: 'wöchentlich', biweekly: 'alle 2 Wochen', monthly: 'monatlich' };
+
+function repeatMatches(e, iso) {
+  if (iso < e.date) return false;
+  const d = fromISO(iso), s = fromISO(e.date);
+  if (e.repeat === 'weekly') return d.getDay() === s.getDay();
+  if (e.repeat === 'biweekly') {
+    if (d.getDay() !== s.getDay()) return false;
+    const w = Math.round((startOfWeek(d) - startOfWeek(s)) / (7 * 864e5));
+    return w % 2 === 0;
+  }
+  if (e.repeat === 'monthly') return d.getDate() === s.getDate();
+  return false;
+}
 function eventsOn(iso) {
-  const own = DATA.events.filter(e => e.date === iso);
+  const own = DATA.events
+    .filter(e => e.repeat ? repeatMatches(e, iso) : e.date === iso)
+    .map(e => e.repeat ? { ...e, date: iso } : e);
   const ics = DATA.icsEvents.filter(e => e.date === iso);
   return own.concat(ics).sort((a, b) => (a.time || '99') < (b.time || '99') ? -1 : 1);
 }
 function nextEvents(n = 3) {
-  const t = todayISO();
-  const all = DATA.events.concat(DATA.icsEvents)
-    .filter(e => e.date >= t)
-    .sort((a, b) => (a.date + (a.time || '99')) < (b.date + (b.time || '99')) ? -1 : 1);
-  return all.slice(0, n);
+  const out = [];
+  for (let i = 0; i < 60 && out.length < n + 8; i++) {
+    out.push(...eventsOn(toISO(addDays(new Date(), i))));
+  }
+  return out.slice(0, n);
+}
+
+/* ---------- Anwesenheit: wer ist wann zum Essen da? ---------- */
+function isPresent(iso, person, slot) {
+  const p = DATA.presence && DATA.presence[iso] && DATA.presence[iso][person];
+  return p ? p[slot] !== false : true; // Standard: da
+}
+function setPresence(iso, person, slot, val) {
+  if (!DATA.presence) DATA.presence = {};
+  if (!DATA.presence[iso]) DATA.presence[iso] = {};
+  if (!DATA.presence[iso][person]) DATA.presence[iso][person] = {};
+  DATA.presence[iso][person][slot] = val;
+  save();
 }
 
 /* ---------- Kochplan: Vorschläge ---------- */
