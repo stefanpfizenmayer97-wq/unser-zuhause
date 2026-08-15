@@ -123,7 +123,7 @@ function startVoice() {
   openSheet(`
     <h2>Ich höre zu …</h2>
     <div class="voicebox">
-      <div class="live" id="voiceLive">Sag z.&nbsp;B.: „Mittwoch um 18 Uhr Zahnarzt“ oder<br>„Parmesan und Milch auf die Einkaufsliste“</div>
+      <div class="live" id="voiceLive">Sag z.&nbsp;B.: „Schreib ${esc(nameOf(partner()))}, dass ich später komme“,<br>„Mittwoch 18 Uhr Zahnarzt“ oder „Milch auf die Liste“</div>
       <button class="btn ghost" data-action="voice-stop">Fertig</button>
     </div>
   `);
@@ -155,6 +155,10 @@ async function understandVoice(text) {
       const r = await UZSync.invoke('ai', { mode: 'parse', text, today: todayISO() });
       const a = r.action || {};
       if (a.kind === 'shopping' && (a.items || []).length) return confirmVoice({ kind: 'shopping', items: a.items });
+      if (a.kind === 'message' && a.title) return confirmVoice({ kind: 'message', text: a.title });
+      if (a.kind === 'note' && a.title) return confirmVoice({ kind: 'note', text: a.title });
+      if (a.kind === 'idea' && a.title) return confirmVoice({ kind: 'idea', text: a.title });
+      if (a.kind === 'chore' && a.title) return confirmVoice({ kind: 'chore', title: a.title, freq: a.freq || 'weekly', who: a.who || 'beide' });
       if (a.kind === 'recipe' && a.title) return confirmVoice({ kind: 'recipe', name: a.title, ing: a.items || [] });
       if (a.kind === 'meal' && a.dish) return confirmVoice({ kind: 'meal', date: a.date || todayISO(), dish: a.dish, items: a.items || [] });
       if (a.kind === 'event' && a.title) return confirmVoice({ kind: 'event', date: a.date || todayISO(), time: a.time || '', title: a.title, who: a.who || 'beide' });
@@ -187,6 +191,46 @@ function confirmVoice(p) {
       <h2>Auf die Einkaufsliste?</h2>
       ${p.items.map(i => `<div class="row"><div class="grow"><div class="title">${esc(i)}</div><div class="meta">${esc(guessCat(i))}</div></div></div>`).join('')}
       <button class="btn full" data-action="voice-add-shopping" data-items="${esc(JSON.stringify(p.items))}">Ja, eintragen</button>
+    `);
+  } else if (p.kind === 'message') {
+    openSheet(`
+      <h2>Nachricht senden?</h2>
+      <textarea class="f" id="vgMsg">${esc(p.text)}</textarea>
+      <div style="margin-top:14px"><button class="btn full" data-action="voice-send-message">An ${esc(nameOf(partner()))} schicken</button></div>
+    `);
+  } else if (p.kind === 'note') {
+    openSheet(`
+      <h2>Zettel anpinnen?</h2>
+      <textarea class="f" id="vpNote">${esc(p.text)}</textarea>
+      <div style="margin-top:14px"><button class="btn full" data-action="voice-pin-note">An ${esc(nameOf(partner()))}s Pinnwand</button></div>
+    `);
+  } else if (p.kind === 'idea') {
+    openSheet(`
+      <h2>Date-Idee speichern?</h2>
+      <input class="f" id="viIdea" value="${esc(p.text)}">
+      <div style="margin-top:14px"><button class="btn full" data-action="voice-add-idea">Auf die Ideenliste</button></div>
+    `);
+  } else if (p.kind === 'chore') {
+    openSheet(`
+      <h2>Neue Haushaltsaufgabe?</h2>
+      <label class="f">Aufgabe</label>
+      <input class="f" id="vcTitle" value="${esc(p.title)}">
+      <div class="frow">
+        <div><label class="f">Rhythmus</label>
+          <select class="f" id="vcFreq">
+            <option value="daily" ${p.freq === 'daily' ? 'selected' : ''}>täglich</option>
+            <option value="weekly" ${p.freq === 'weekly' || !p.freq ? 'selected' : ''}>jede Woche</option>
+            <option value="biweekly" ${p.freq === 'biweekly' ? 'selected' : ''}>alle 2 Wochen</option>
+            <option value="monthly" ${p.freq === 'monthly' ? 'selected' : ''}>jeden Monat</option>
+          </select></div>
+        <div><label class="f">Wer?</label>
+          <select class="f" id="vcWho">
+            <option value="beide" ${p.who === 'beide' ? 'selected' : ''}>Im Wechsel</option>
+            <option value="stefan" ${p.who === 'stefan' ? 'selected' : ''}>Stefan</option>
+            <option value="linda" ${p.who === 'linda' ? 'selected' : ''}>Linda</option>
+          </select></div>
+      </div>
+      <div style="margin-top:14px"><button class="btn full" data-action="voice-add-chore">Anlegen</button></div>
     `);
   } else if (p.kind === 'recipe') {
     window._aiRecipeFromVoice = { name: p.name, ing: p.ing };

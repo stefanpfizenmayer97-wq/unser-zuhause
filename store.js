@@ -55,6 +55,7 @@ function daysUntil(iso) {
 const SEED = {
   settings: { me: 'stefan', icsStefan: '', icsLinda: '', icsLast: '', notified: {} },
   notes: { stefan: '', linda: '' },
+  notesAt: { stefan: '', linda: '' },
   reads: { stefan: '', linda: '' },
   messages: [],
   tasks: [
@@ -172,6 +173,85 @@ function suggestRecipe() {
   const pool = DATA.recipes.filter(r => !used.has(r.id));
   const list = pool.length ? pool : DATA.recipes;
   return list[Math.floor(Math.random() * list.length)];
+}
+
+/* ---------- Gedanke des Tages (für die Pinnwand) ---------- */
+const QUOTES = [
+  'Liebe ist nicht, sich anzustarren, sondern gemeinsam in dieselbe Richtung zu blicken.',
+  'Das schönste Zuhause ist der Mensch, bei dem man ankommen darf.',
+  'Kleine Gesten, jeden Tag – daraus ist große Liebe gemacht.',
+  'Heute ist ein guter Tag, um einander zuzuhören.',
+  'Wer zusammen lacht, räumt auch leichter zusammen auf.',
+  'Nimm dir heute eine Minute, um zu sagen, was du am anderen magst.',
+  'Glück ist die Summe der kleinen Momente zu zweit.',
+  'Ein ehrliches „Danke“ wirkt länger als ein großer Strauß Blumen.',
+  'Zuhause ist kein Ort. Zuhause bist du.',
+  'Streitet leise, liebt laut.',
+  'Der Alltag ist das eigentliche Abenteuer – gut, dass wir ihn teilen.',
+  'Achtsamkeit beginnt damit, das Handy wegzulegen, wenn der andere erzählt.',
+  'Man muss nicht alles gleich sehen, um in dieselbe Richtung zu gehen.',
+  'Ein gemeinsamer Kaffee am Morgen ist auch eine Art Liebeserklärung.',
+  'Was du heute an mir schätzt, sag es mir heute.',
+  'Geduld ist Liebe, die warten kann.',
+  'Die beste Zeit für ein gutes Gespräch ist jetzt.',
+  'Wer den anderen wachsen lässt, wächst mit.',
+  'Auch aus Krümeln auf dem Tisch kann man Geschichten lesen.',
+  'Umarmt euch heute einmal länger als nötig.',
+  'Nicht perfekt, aber echt – so ist gute Liebe.',
+  'Jeder Tag zu zweit ist ein kleines Fest, wenn man es bemerkt.',
+  'Sag nicht nur „passt schon“ – sag, was du fühlst.',
+  'Gemeinsam kochen ist die leckerste Form von Teamwork.',
+  'Die Liebe wohnt in der Aufmerksamkeit.',
+  'Ein Spaziergang zu zweit ordnet mehr als jede To-do-Liste.',
+  'Vergleiche eure Liebe nicht – sie ist ein Original.',
+  'Heute schon gelächelt, als du an den anderen gedacht hast?',
+  'Wer Fehler zugeben kann, schenkt dem anderen Vertrauen.',
+  'Das Leben ist schöner, wenn man es sich gegenseitig leichter macht.',
+  'Kleine Pausen zu zweit sind die Tankstellen der Liebe.',
+  'Hör zu, um zu verstehen – nicht, um zu antworten.',
+  'Ein liebevoller Zettel wirkt manchmal Wunder.',
+  'Dankbarkeit macht aus einem normalen Tag einen guten.',
+  'Ihr müsst nicht alles schaffen. Nur füreinander da sein.',
+  'Wer zuerst „Entschuldigung“ sagt, ist nicht schwach – sondern mutig.',
+  'Die schönsten Erinnerungen entstehen meistens ungeplant.',
+  'Nähe entsteht, wenn man sich Zeit schenkt.',
+  'Auch stille Momente zu zweit erzählen viel.',
+  'Frag heute mal: Wie geht es dir wirklich?',
+  'Liebe ist ein Verb – sie will jeden Tag getan werden.',
+  'Zwei Menschen, ein Zuhause, tausend kleine Wunder.',
+  'Lächle deinem Lieblingsmenschen heute zuerst zu.',
+  'Wer gemeinsam träumt, hat schon die halbe Reise gemacht.',
+  'Der Ton macht die Musik – auch in der Küche.',
+  'Halte fest, was zählt: Hände, Momente, Versprechen.',
+  'Heute einfach mal den Lieblingsmenschen drücken. Ohne Grund.',
+  'Aus „ich“ und „du“ wird jeden Tag aufs Neue ein „wir“.',
+  'Ein aufgeräumtes Herz ist wichtiger als eine aufgeräumte Wohnung.',
+  'Genießt das Kleine – es ist das Große in Verkleidung.',
+];
+function dailyQuote() {
+  const d = new Date();
+  const start = Date.UTC(d.getFullYear(), 0, 0);
+  const doy = Math.floor((Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()) - start) / 864e5);
+  return QUOTES[doy % QUOTES.length];
+}
+
+/* ---------- Pinnwand-Zettel: nach 7 Tagen von selbst abnehmen ---------- */
+const NOTE_DAYS = 7;
+function noteCleanup() {
+  if (!DATA.notesAt) DATA.notesAt = { stefan: '', linda: '' };
+  let changed = false;
+  for (const p of ['stefan', 'linda']) {
+    if (!DATA.notes[p]) continue;
+    if (!DATA.notesAt[p]) { DATA.notesAt[p] = new Date().toISOString(); changed = true; }
+    else if (Date.now() - new Date(DATA.notesAt[p]).getTime() > NOTE_DAYS * 864e5) {
+      DATA.notes[p] = ''; DATA.notesAt[p] = ''; changed = true;
+    }
+  }
+  if (changed) save();
+}
+function noteDaysLeft(p) {
+  if (!DATA.notes[p] || !DATA.notesAt || !DATA.notesAt[p]) return null;
+  return Math.max(0, NOTE_DAYS - Math.floor((Date.now() - new Date(DATA.notesAt[p]).getTime()) / 864e5));
 }
 
 /* ---------- Ungelesene Nachrichten ---------- */

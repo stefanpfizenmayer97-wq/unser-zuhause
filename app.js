@@ -113,6 +113,7 @@ function updateBadge() {
 
 /* ---------- Home ---------- */
 function renderHome() {
+  noteCleanup(); // abgelaufene Pinnwand-Zettel abnehmen
   const now = new Date(), h = now.getHours();
   const greet = h < 5 ? 'Gute Nacht' : h < 11 ? 'Guten Morgen' : h < 18 ? 'Hallo' : 'Guten Abend';
   const today = todayISO();
@@ -136,18 +137,29 @@ function renderHome() {
     </div>
   </div>`;
 
-  if (pn) {
-    html += `<div class="notecard"><div class="from">Von ${esc(nameOf(partner()))}</div><div class="txt">${esc(pn)}</div></div>`;
-  }
+  const heartPin = '<svg viewBox="0 0 24 24" width="22" height="22"><path d="M12 21C6.2 16.7 3 12.8 3 9.4 3 6.5 5.2 4.4 7.7 4.4c1.7 0 3.2.9 4.3 2.4 1.1-1.5 2.6-2.4 4.3-2.4 2.5 0 4.7 2.1 4.7 5 0 3.4-3.2 7.3-9 11.6Z" fill="#BC6A4A"/></svg>';
+  html += `<div class="quote-paper">
+    <span class="tape"></span>
+    <div class="quote-text">„${esc(dailyQuote())}“</div>
+    <div class="quote-sub">Gedanke des Tages</div>
+  </div>`;
   const myNote = DATA.notes[me()];
+  if (pn) {
+    html += `<div class="note-paper">
+      <span class="pin">${heartPin}</span>
+      <div class="note-from">Für dich, von ${esc(nameOf(partner()))}</div>
+      <div class="note-text">${esc(pn)}</div>
+    </div>`;
+  }
   if (myNote) {
-    html += `<div class="card" data-action="edit-note" style="border-style:dashed">
-      <div class="hint" style="font-size:12px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;margin-bottom:4px">Deine Nachricht für ${esc(nameOf(partner()))}</div>
-      <div style="font-size:14px">${esc(myNote)}</div>
-      <div class="hint" style="margin-top:6px">${esc(nameOf(partner()))} sieht sie auf ihrem Home-Bildschirm · tippen zum Ändern</div>
+    html += `<div class="note-paper mine" data-action="edit-note">
+      <span class="tape"></span>
+      <div class="note-from">Dein Zettel für ${esc(nameOf(partner()))}</div>
+      <div class="note-text">${esc(myNote)}</div>
+      <div class="note-hint">hängt noch ${noteDaysLeft(me())} Tage · tippen zum Ändern</div>
     </div>`;
   } else {
-    html += `<button class="btn ghost small" data-action="edit-note">${icon('pen', 15)} Nachricht für ${esc(nameOf(partner()))} hinterlassen</button>`;
+    html += `<button class="btn ghost small" data-action="edit-note">${icon('pen', 15)} Zettel für ${esc(nameOf(partner()))} anpinnen</button>`;
   }
 
   html += `<h2 class="sect">Auf einen Blick</h2>
@@ -172,11 +184,6 @@ function renderHome() {
     html += taskRow(t);
   }
   if (!anyToday) html += emptyState('star', 'Heute steht nichts an – genießt den Tag!');
-
-  html += `<h2 class="sect">Highlight der Woche <span class="more" data-action="edit-highlight">bearbeiten</span></h2>`;
-  html += DATA.us.highlight
-    ? `<div class="card sand"><div style="font-family:var(--serif);font-style:italic;font-size:17px">${esc(DATA.us.highlight)}</div></div>`
-    : `<div class="card" data-action="edit-highlight"><div class="hint">Was war (oder wird) euer Highlight diese Woche? Tippen zum Eintragen.</div></div>`;
 
   const un = unreadCount();
   html += `<h2 class="sect">Nachrichten${un ? ' <span class="unread inline">' + un + ' neu</span>' : ''} <span class="more" data-action="open-chat">alle ansehen</span></h2>`;
@@ -207,6 +214,17 @@ function taskRow(t) {
 }
 
 /* ---------- Haushalt ---------- */
+function taskMini(t) {
+  const done = taskIsDone(t);
+  return `<div class="task-mini ${done ? 'done' : ''}">
+    <button class="check ${done ? 'on' : ''}" data-action="toggle-task" data-id="${t.id}">${icon('check', 13)}</button>
+    <div class="grow" data-action="edit-task" data-id="${t.id}">
+      <div class="title">${esc(t.title)}</div>
+      <div class="meta">${FREQ_LABEL[t.freq] || ''}${t.rotation.length > 1 ? ' · Wechsel' : ''}</div>
+    </div>
+  </div>`;
+}
+
 function renderHaushalt() {
   const open = DATA.tasks.filter(t => !taskIsDone(t));
   const done = DATA.tasks.filter(t => taskIsDone(t));
@@ -214,7 +232,22 @@ function renderHaushalt() {
     <button class="iconbtn" data-action="add-task">${icon('plus', 19)}</button></div>`;
 
   html += `<h2 class="sect">Jetzt fällig</h2>`;
-  html += open.length ? open.map(taskRow).join('') : emptyState('star', 'Alles erledigt – ihr seid ein Traumteam!');
+  if (open.length) {
+    const st = open.filter(t => taskWho(t) === 'stefan');
+    const li = open.filter(t => taskWho(t) === 'linda');
+    html += `<div class="duo">
+      <div>
+        <div class="colhead stefan">Stefan</div>
+        ${st.map(taskMini).join('') || '<div class="hint" style="padding:4px 2px">Nichts offen – stark!</div>'}
+      </div>
+      <div>
+        <div class="colhead linda">Linda</div>
+        ${li.map(taskMini).join('') || '<div class="hint" style="padding:4px 2px">Nichts offen – stark!</div>'}
+      </div>
+    </div>`;
+  } else {
+    html += emptyState('star', 'Alles erledigt – ihr seid ein Traumteam!');
+  }
 
   if (done.length) {
     html += `<h2 class="sect">Schon erledigt</h2>` + done.map(taskRow).join('');
@@ -650,26 +683,27 @@ function handleAction(a, el) {
 
     /* Notiz & Highlight */
     case 'edit-note':
-      openSheet(`<h2>Nachricht für ${esc(nameOf(partner()))}</h2>
-        <textarea class="f" id="noteText" placeholder="z. B. Ich komme heute erst um 19 Uhr">${esc(DATA.notes[me()])}</textarea>
-        <div style="margin-top:14px"><button class="btn full" data-action="save-note">Ans Schwarze Brett</button></div>`);
+      openSheet(`<h2>Zettel für ${esc(nameOf(partner()))}</h2>
+        <p class="mut">Er hängt dann an ${esc(nameOf(partner()))}s Pinnwand, bis du ihn änderst oder abnimmst.</p>
+        <textarea class="f" id="noteText" placeholder="z. B. Ich komme heute erst um 19 Uhr – Essen steht im Ofen">${esc(DATA.notes[me()])}</textarea>
+        <div style="margin-top:14px;display:flex;gap:8px">
+          ${DATA.notes[me()] ? '<button class="btn ghost" data-action="clear-note">Abnehmen</button>' : ''}
+          <button class="btn" style="flex:1" data-action="save-note">Anpinnen</button>
+        </div>`);
       break;
+    case 'clear-note':
+      DATA.notes[me()] = '';
+      if (DATA.notesAt) DATA.notesAt[me()] = '';
+      save(); closeSheet(); render(); toast('Zettel abgenommen'); break;
     case 'save-note':
       DATA.notes[me()] = document.getElementById('noteText').value.trim();
-      save(); closeSheet(); render(); toast('Hinterlassen');
+      if (!DATA.notesAt) DATA.notesAt = { stefan: '', linda: '' };
+      DATA.notesAt[me()] = DATA.notes[me()] ? new Date().toISOString() : '';
+      save(); closeSheet(); render(); toast('Angepinnt');
       if (DATA.notes[me()] && window.UZSync) {
-        UZSync.notifyPartner(nameOf(me()) + ' hat etwas ans Schwarze Brett geschrieben', DATA.notes[me()].slice(0, 120));
+        UZSync.notifyPartner(nameOf(me()) + ' hat dir einen Zettel an die Pinnwand gehängt', DATA.notes[me()].slice(0, 120));
       }
       break;
-    case 'edit-highlight':
-      openSheet(`<h2>Highlight der Woche</h2>
-        <textarea class="f" id="hlText">${esc(DATA.us.highlight)}</textarea>
-        <div style="margin-top:14px"><button class="btn full" data-action="save-highlight">Speichern</button></div>`);
-      break;
-    case 'save-highlight':
-      DATA.us.highlight = document.getElementById('hlText').value.trim();
-      save(); closeSheet(); render(); break;
-
     /* Haushalt */
     case 'toggle-task': { const t = DATA.tasks.find(x => x.id === id); if (t) { toggleTask(t); render(); } break; }
     case 'add-task': openTaskSheet(null); break;
@@ -946,6 +980,48 @@ function handleAction(a, el) {
         (window._voiceMealItems || []).forEach(i => addShoppingItem(i));
         window._voiceMealItems = [];
         save(); closeSheet(); state.tab = 'kueche'; state.kueche = 'plan'; render(); toast('Eingeplant');
+      }
+      break;
+    }
+    case 'voice-send-message': {
+      const txt = document.getElementById('vgMsg').value.trim();
+      if (txt) {
+        DATA.messages.push({ id: uid(), from: me(), text: txt, at: new Date().toISOString() });
+        save();
+        if (window.UZSync) UZSync.notifyPartner('Nachricht von ' + nameOf(me()), txt.slice(0, 120));
+        closeSheet(); state.tab = 'chat'; markChatRead(); render();
+        requestAnimationFrame(() => window.scrollTo(0, document.body.scrollHeight));
+        toast('Gesendet');
+      }
+      break;
+    }
+    case 'voice-pin-note': {
+      const txt = document.getElementById('vpNote').value.trim();
+      if (txt) {
+        DATA.notes[me()] = txt;
+        if (!DATA.notesAt) DATA.notesAt = { stefan: '', linda: '' };
+        DATA.notesAt[me()] = new Date().toISOString();
+        save();
+        if (window.UZSync) UZSync.notifyPartner(nameOf(me()) + ' hat dir einen Zettel an die Pinnwand gehängt', txt.slice(0, 120));
+        closeSheet(); state.tab = 'home'; render(); toast('Angepinnt');
+      }
+      break;
+    }
+    case 'voice-add-idea': {
+      const v = document.getElementById('viIdea').value.trim();
+      if (v) { DATA.us.ideas.push(v); save(); closeSheet(); state.tab = 'uns'; render(); toast('Idee gespeichert'); }
+      break;
+    }
+    case 'voice-add-chore': {
+      const title = document.getElementById('vcTitle').value.trim();
+      if (title) {
+        const who = document.getElementById('vcWho').value;
+        const rotation = who === 'beide' ? ['stefan', 'linda'] : [who];
+        DATA.tasks.push({
+          id: uid(), title, freq: document.getElementById('vcFreq').value,
+          anchor: toISO(startOfWeek(new Date())), rotation, turn: 0, doneKey: null,
+        });
+        save(); closeSheet(); state.tab = 'haushalt'; render(); toast('Aufgabe angelegt');
       }
       break;
     }
