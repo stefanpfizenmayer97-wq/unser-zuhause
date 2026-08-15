@@ -124,7 +124,6 @@ function renderHome() {
   const dueMine = openTasks().filter(t => taskWho(t) === me());
   const shopOpen = DATA.shopping.filter(i => !i.done).length;
   const next = nextEvents(10).filter(mine)[0];
-  const msgs = DATA.messages.slice(-2);
 
   let html = `
   <div class="pagehead">
@@ -186,14 +185,25 @@ function renderHome() {
   }
   if (!anyToday) html += emptyState('star', 'Für dich steht heute nichts an – genieß den Tag!');
 
-  const un = unreadCount();
-  html += `<h2 class="sect">Nachrichten${un ? ' <span class="unread inline">' + un + ' neu</span>' : ''} <span class="more" data-action="open-chat">alle ansehen</span></h2>`;
-  if (msgs.length) {
-    for (const m of msgs) {
-      html += `<div class="row" data-action="open-chat"><span class="ric">${icon('mail', 18)}</span><div class="grow"><div class="title" style="font-weight:500">${esc(m.text)}</div><div class="meta">${esc(nameOf(m.from))}</div></div></div>`;
+  html += `<h2 class="sect">Demnächst <span class="more" data-action="go-kalender">zum Kalender</span></h2>`;
+  const upcoming = [];
+  for (let i = 1; i <= 30 && upcoming.length < 5; i++) {
+    const iso = toISO(addDays(new Date(), i));
+    for (const e of eventsOn(iso).filter(mine)) {
+      if (upcoming.length < 5) upcoming.push(e);
+    }
+  }
+  if (upcoming.length) {
+    for (const e of upcoming) {
+      html += `<div class="row" style="border-left:4px solid ${WHO_COLOR(e.who)}" data-action="home-ev" data-iso="${e.date}">
+        <span class="ric">${icon(e.src === 'ics' ? 'case' : 'cal', 18)}</span>
+        <div class="grow"><div class="title">${esc(e.title)}</div>
+        <div class="meta">${esc(fmtShort(e.date))}${e.time ? ' · ' + esc(e.time) + ' Uhr' : ''}${e.src === 'ics' ? ' · Outlook' : ''}${e.repeat ? ' · ↻' : ''}</div></div>
+        ${whoChip(e.who)}
+      </div>`;
     }
   } else {
-    html += `<div class="card" data-action="open-chat"><div class="hint">Noch keine Nachrichten – schreib ${esc(nameOf(partner()))} etwas Liebes.</div></div>`;
+    html += `<div class="card" data-action="plan-datenight"><div class="hint">Nichts geplant in den nächsten Wochen – wie wär's mit einer Date-Night? Tippen zum Planen.</div></div>`;
   }
   return html;
 }
@@ -844,6 +854,7 @@ function handleAction(a, el) {
     case 'open-chat': state.tab = 'chat'; markChatRead(); render(); requestAnimationFrame(() => window.scrollTo(0, document.body.scrollHeight)); break;
     case 'go-haushalt': state.tab = 'haushalt'; render(); break;
     case 'go-kalender': state.tab = 'kalender'; render(); break;
+    case 'home-ev': state.tab = 'kalender'; state.calView = 'tag'; state.calSel = el.dataset.iso; render(); break;
     case 'go-kueche': state.tab = 'kueche'; state.kueche = 'plan'; render(); break;
     case 'go-einkauf': state.tab = 'kueche'; state.kueche = 'list'; render(); break;
 
