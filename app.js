@@ -562,20 +562,29 @@ function openRecipeSheet(id) {
     <h2>${esc(r.name)}</h2>
     <div class="mut" style="margin-bottom:8px">Abwählen, was ihr schon habt – dann übernehmen.</div>
     ${r.ing.map(i => '<div class="row" data-ing-name="' + esc(i) + '"><button class="check on" data-action="ing-toggle">' + icon('check', 13) + '</button><div class="grow" data-action="ing-toggle-row"><div class="title" style="font-weight:500">' + esc(i) + '</div><div class="meta">' + esc(guessCat(i)) + '</div></div></div>').join('')}
+    ${r.anleitung
+      ? '<h2 style="font-size:17px;margin:16px 0 8px">Zubereitung</h2><div class="card" style="white-space:pre-wrap;font-size:14.5px;line-height:1.5">' + esc(r.anleitung) + '</div>'
+      : '<button class="btn ghost small full" style="margin-top:10px" data-action="ai-howto" data-id="' + r.id + '">' + icon('spark', 15) + ' Zubereitung von der KI ergänzen</button>'}
     <div style="margin-top:12px;display:flex;flex-direction:column;gap:8px">
       <button class="btn full" data-action="recipe-shop" data-id="${r.id}">${icon('cart', 16)} Ausgewählte auf die Einkaufsliste</button>
-      <button class="btn danger full" data-action="del-recipe" data-id="${r.id}">Rezept löschen</button>
+      <div class="frow">
+        <button class="btn ghost small" data-action="edit-recipe" data-id="${r.id}">Bearbeiten</button>
+        <button class="btn danger small" data-action="del-recipe" data-id="${r.id}">Löschen</button>
+      </div>
     </div>
   `);
 }
-function openAddRecipeSheet() {
+function openAddRecipeSheet(id) {
+  const r = id ? DATA.recipes.find(x => x.id === id) : null;
   openSheet(`
-    <h2>Neues Rezept</h2>
+    <h2>${r ? 'Rezept bearbeiten' : 'Neues Rezept'}</h2>
     <label class="f">Name</label>
-    <input class="f" id="rcName" placeholder="z. B. Lasagne">
+    <input class="f" id="rcName" value="${r ? esc(r.name) : ''}" placeholder="z. B. Lasagne">
     <label class="f">Zutaten (eine pro Zeile)</label>
-    <textarea class="f" id="rcIng" placeholder="Lasagneplatten&#10;Hackfleisch&#10;Passierte Tomaten"></textarea>
-    <div style="margin-top:14px"><button class="btn full" data-action="save-recipe">Speichern</button></div>
+    <textarea class="f" id="rcIng" placeholder="Lasagneplatten&#10;Hackfleisch&#10;Passierte Tomaten">${r ? esc(r.ing.join('\n')) : ''}</textarea>
+    <label class="f">Zubereitung (optional – wie macht ihr's?)</label>
+    <textarea class="f" id="rcHow" style="min-height:110px" placeholder="1. Ofen vorheizen …&#10;2. …">${r && r.anleitung ? esc(r.anleitung) : ''}</textarea>
+    <div style="margin-top:14px"><button class="btn full" data-action="save-recipe" data-id="${r ? r.id : ''}">Speichern</button></div>
   `);
 }
 
@@ -606,7 +615,8 @@ function renderUns() {
   }
 
   html += `<h2 class="sect">Date-Ideen <span class="more" data-action="idea-random">überrasch uns</span></h2>
-  <div class="addbar"><input class="f" id="ideaInput" placeholder="Neue Idee …"><button class="btn" data-action="idea-add">${icon('plus', 17)}</button></div>`;
+  <div class="addbar"><input class="f" id="ideaInput" placeholder="Neue Idee …"><button class="btn" data-action="idea-add">${icon('plus', 17)}</button></div>
+  <button class="btn ghost small full" style="margin-bottom:10px" data-action="ai-ideas-open">${icon('spark', 15)} Ideen von der KI holen</button>`;
   DATA.us.ideas.forEach((idea, i) => {
     html += `<div class="row"><span class="ric">${icon('bulb', 18)}</span><div class="grow"><div class="title" style="font-weight:500">${esc(idea)}</div></div>
       <button class="check" data-action="idea-del" data-i="${i}" style="border-color:#E0C4B8;color:#A54B32">${icon('x', 13)}</button></div>`;
@@ -632,8 +642,8 @@ function nextFriday() {
   const diff = (4 - ((n.getDay() + 6) % 7) + 7) % 7 || 7;
   return toISO(addDays(n, diff));
 }
-function openDateNightSheet() {
-  const ideas = DATA.us.ideas.map((x, i) => '<option value="' + i + '">' + esc(x) + '</option>').join('');
+function openDateNightSheet(preIdx) {
+  const ideas = DATA.us.ideas.map((x, i) => '<option value="' + i + '"' + (i === preIdx ? ' selected' : '') + '>' + esc(x) + '</option>').join('');
   const recipes = DATA.recipes.map(r => '<option value="' + r.id + '">' + esc(r.name) + '</option>').join('');
   openSheet(`
     <h2>Date-Night planen</h2>
@@ -897,7 +907,24 @@ function handleAction(a, el) {
     case 'save-recipe': {
       const name = document.getElementById('rcName').value.trim();
       const ing = document.getElementById('rcIng').value.split('\n').map(s => s.trim()).filter(Boolean);
-      if (name) { DATA.recipes.push({ id: uid(), name, ing }); save(); closeSheet(); render(); }
+      const anleitung = document.getElementById('rcHow').value.trim();
+      if (name) {
+        const r = id ? DATA.recipes.find(x => x.id === id) : null;
+        if (r) Object.assign(r, { name, ing, anleitung });
+        else DATA.recipes.push({ id: uid(), name, ing, anleitung });
+        save(); closeSheet(); render();
+      }
+      break;
+    }
+    case 'edit-recipe': openAddRecipeSheet(id); break;
+    case 'ai-howto': {
+      const r = DATA.recipes.find(x => x.id === id);
+      if (!r) break;
+      if (!window.UZSync || !UZSync.active()) { toast('Erst anmelden'); break; }
+      openSheet('<h2>Einen Moment …</h2><div class="voicebox"><div class="live">Ich schreibe die Zubereitung.</div></div>');
+      UZSync.invoke('ai', { mode: 'howto', wish: r.name, recipes: r.ing })
+        .then(res => { r.anleitung = res.anleitung || ''; save(); openRecipeSheet(r.id); toast('Zubereitung ergänzt'); })
+        .catch(e => { openRecipeSheet(r.id); toast(e.message); });
       break;
     }
     case 'del-recipe': DATA.recipes = DATA.recipes.filter(r => r.id !== id); save(); closeSheet(); render(); break;
@@ -919,8 +946,8 @@ function handleAction(a, el) {
           const rec = r.recipe;
           state._aiRecipe = rec;
           openSheet(`<h2>${esc(rec.name)}</h2>
-            ${rec.hinweis ? '<div class="card sand">' + esc(rec.hinweis) + '</div>' : ''}
             ${rec.ing.map(i => '<div class="row"><div class="grow"><div class="title" style="font-weight:500">' + esc(i) + '</div><div class="meta">' + esc(guessCat(i)) + '</div></div></div>').join('')}
+            ${rec.anleitung ? '<h2 style="font-size:17px;margin:14px 0 8px">Zubereitung</h2><div class="card" style="white-space:pre-wrap;font-size:14.5px;line-height:1.5">' + esc(rec.anleitung) + '</div>' : ''}
             <div style="margin-top:12px;display:flex;gap:8px">
               <button class="btn ghost" data-action="ai-recipe-go">Anderer Vorschlag</button>
               <button class="btn" style="flex:1" data-action="ai-recipe-save">Speichern</button>
@@ -937,7 +964,7 @@ function handleAction(a, el) {
       const rec = state._aiRecipe;
       if (rec && rec.name) {
         const newId = uid();
-        DATA.recipes.push({ id: newId, name: rec.name, ing: rec.ing || [] });
+        DATA.recipes.push({ id: newId, name: rec.name, ing: rec.ing || [], anleitung: rec.anleitung || '' });
         const day = state._aiRecipeForDay;
         if (day) {
           DATA.meals[day] = { rid: newId };
@@ -989,6 +1016,48 @@ function handleAction(a, el) {
     }
     case 'bucket-del': DATA.us.bucket.splice(+el.dataset.i, 1); save(); render(); break;
     case 'plan-datenight': openDateNightSheet(); break;
+    case 'ai-ideas-open':
+      openSheet(`<h2>Date-Ideen von der KI</h2>
+        <label class="f">Worauf habt ihr Lust? (optional)</label>
+        <input class="f" id="aiIdeaWish" placeholder="z. B. draußen, günstig, was Besonderes …">
+        <div style="margin-top:14px"><button class="btn full" data-action="ai-ideas-go">Vorschläge holen</button></div>`);
+      break;
+    case 'ai-ideas-go': {
+      const wishEl = document.getElementById('aiIdeaWish');
+      if (wishEl) state._aiIdeaWish = wishEl.value.trim();
+      if (!window.UZSync || !UZSync.active()) { toast('Erst anmelden'); break; }
+      openSheet('<h2>Einen Moment …</h2><div class="voicebox"><div class="live">Ich sammle schöne Ideen für euch.</div></div>');
+      UZSync.invoke('ai', { mode: 'dateideas', wish: state._aiIdeaWish || '', today: todayISO(), recipes: DATA.us.ideas })
+        .then(r => {
+          const rows = (r.ideas || []).map(i =>
+            `<div class="row"><span class="ric">${icon('bulb', 18)}</span>
+              <div class="grow"><div class="title" style="font-weight:500">${esc(i)}</div></div>
+              <button class="check" data-action="ai-idea-keep" data-text="${esc(i)}" title="Merken">${icon('plus', 14)}</button>
+              <button class="check" data-action="ai-idea-plan" data-text="${esc(i)}" title="Als Date-Night planen">${icon('cal', 14)}</button>
+            </div>`).join('');
+          openSheet(`<h2>Wie wär's damit?</h2>
+            <div class="mut" style="margin-bottom:8px">+ merkt die Idee, 📅 plant sie direkt als Date-Night.</div>
+            ${rows}
+            <div class="frow" style="margin-top:10px">
+              <button class="btn ghost" data-action="ai-ideas-go">Andere Vorschläge</button>
+              <button class="btn" style="flex:1" data-action="close-sheet">Fertig</button>
+            </div>`);
+        })
+        .catch(e => { openSheet('<h2>Das hat nicht geklappt</h2><p class="mut">' + esc(e.message) + '</p><div style="margin-top:14px"><button class="btn full" data-action="close-sheet">OK</button></div>'); });
+      break;
+    }
+    case 'ai-idea-keep': {
+      const txt = el.dataset.text;
+      if (!DATA.us.ideas.includes(txt)) { DATA.us.ideas.push(txt); save(); }
+      toast('Gemerkt');
+      break;
+    }
+    case 'ai-idea-plan': {
+      const txt = el.dataset.text;
+      if (!DATA.us.ideas.includes(txt)) { DATA.us.ideas.push(txt); save(); }
+      openDateNightSheet(DATA.us.ideas.indexOf(txt));
+      break;
+    }
     case 'save-datenight': {
       const date = document.getElementById('dnDate').value;
       const time = document.getElementById('dnTime').value;
