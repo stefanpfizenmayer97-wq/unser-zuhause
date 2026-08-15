@@ -69,6 +69,39 @@ function render() {
   v.innerHTML = (views[state.tab] || renderHome)();
   window.scrollTo(0, 0);
   updateBadge();
+  if (state.tab === 'settings') setTimeout(fillPushCard, 50);
+}
+
+/* Benachrichtigungs-Karte in den Einstellungen mit echtem Status füllen */
+async function fillPushCard() {
+  const el = document.getElementById('pushCard');
+  if (!el) return;
+  const sync = window.UZSync;
+  if (!sync || !sync.active()) {
+    el.innerHTML = '<div class="hint">Erst anmelden – dann kannst du hier Benachrichtigungen einschalten.</div>';
+    return;
+  }
+  const st = await sync.pushStatus();
+  if (st === 'unsupported') {
+    el.innerHTML = '<div class="hint"><b>Auf diesem Gerät nicht möglich.</b><br>Auf dem iPhone: Die App zuerst über „Teilen → Zum Home-Bildschirm“ installieren und <b>von dort</b> öffnen – im normalen Safari-Tab erlaubt iOS keine Mitteilungen (ab iOS 16.4).</div>';
+    return;
+  }
+  if (st === 'denied') {
+    el.innerHTML = '<div class="hint"><b>Von iOS blockiert.</b><br>Einschalten unter: iPhone-Einstellungen → Mitteilungen → „Zuhause“ → Mitteilungen erlauben. Danach hier zurückkommen.</div>';
+    return;
+  }
+  el.innerHTML = st === 'on'
+    ? `<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+         <b>Auf diesem Gerät: aktiv</b><span class="chip stefan">AN</span>
+       </div>
+       <div style="display:flex;flex-direction:column;gap:8px">
+         <button class="btn ghost small" data-action="push-test">Test an dieses Gerät senden</button>
+         <button class="btn danger small" data-action="push-off">Benachrichtigungen ausschalten</button>
+       </div>`
+    : `<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+         <b>Auf diesem Gerät: aus</b><span class="chip ghost">AUS</span>
+       </div>
+       <button class="btn small full" data-action="push-on">${icon('bell', 16)} Benachrichtigungen einschalten</button>`;
 }
 function updateBadge() {
   if (navigator.setAppBadge) {
@@ -563,10 +596,7 @@ function renderSettings() {
   </div>
 
   <h2 class="sect">Benachrichtigungen</h2>
-  <div class="card">
-    <button class="btn small full" data-action="notif-enable">${icon('bell', 16)} Benachrichtigungen erlauben</button>
-    <div class="hint" style="margin-top:8px">Auf dem iPhone: Die App zuerst über „Teilen → Zum Home-Bildschirm“ installieren (ab iOS 16.4), dann hier erlauben. Echte Push-Nachrichten (auch bei geschlossener App) folgen mit dem Supabase-Schritt.</div>
-  </div>
+  <div class="card" id="pushCard"><div class="hint">Prüfe Status …</div></div>
 
   <h2 class="sect">Daten</h2>
   <div class="card" style="display:flex;flex-direction:column;gap:8px">
@@ -812,19 +842,28 @@ function handleAction(a, el) {
       DATA.settings.icsStefan = document.getElementById('setIcsStefan').value.trim();
       DATA.settings.icsLinda = document.getElementById('setIcsLinda').value.trim();
       save(); refreshIcs(false); break;
-    case 'notif-enable':
+    case 'push-on':
       (async () => {
         try {
-          if (window.UZSync && UZSync.active()) {
-            await UZSync.enablePush();
-            localStorage.setItem('uz-push-done', '1');
-            toast('Push aktiv auf diesem Gerät');
-          } else if ('Notification' in window) {
-            const p = await Notification.requestPermission();
-            toast(p === 'granted' ? 'Benachrichtigungen aktiv' : 'Nicht erlaubt');
-          } else {
-            toast('Erst als App installieren');
-          }
+          await UZSync.enablePush();
+          localStorage.setItem('uz-push-done', '1');
+          toast('Benachrichtigungen aktiv');
+        } catch (e) { toast(e.message); }
+        fillPushCard();
+      })();
+      break;
+    case 'push-off':
+      (async () => {
+        try { await UZSync.disablePush(); toast('Benachrichtigungen aus'); }
+        catch (e) { toast(e.message); }
+        fillPushCard();
+      })();
+      break;
+    case 'push-test':
+      (async () => {
+        try {
+          const r = await UZSync.testPush();
+          toast(r.sent > 0 ? 'Test gesendet – müsste gleich klingeln' : 'Kein registriertes Gerät gefunden');
         } catch (e) { toast(e.message); }
       })();
       break;

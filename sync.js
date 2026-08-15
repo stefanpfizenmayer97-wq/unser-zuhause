@@ -182,10 +182,48 @@ window.UZSync = (() => {
     return true;
   }
 
+  /* Status: 'unsupported' | 'denied' | 'on' | 'off' */
+  async function pushStatus() {
+    if (!('serviceWorker' in navigator) || !('PushManager' in window) || !('Notification' in window)) return 'unsupported';
+    if (Notification.permission === 'denied') return 'denied';
+    try {
+      const reg = await Promise.race([
+        navigator.serviceWorker.ready,
+        new Promise((_, rej) => setTimeout(() => rej(new Error('sw')), 3000)),
+      ]);
+      const sub = await reg.pushManager.getSubscription();
+      return sub ? 'on' : 'off';
+    } catch (e) { return 'off'; }
+  }
+
+  async function disablePush() {
+    const reg = await navigator.serviceWorker.ready;
+    const sub = await reg.pushManager.getSubscription();
+    if (sub) {
+      const endpoint = sub.endpoint;
+      await sub.unsubscribe();
+      if (active()) {
+        await client.from('push_subscriptions').delete()
+          .eq('email', email())
+          .filter('subscription->>endpoint', 'eq', endpoint);
+      }
+    }
+    localStorage.removeItem('uz-push-done');
+  }
+
+  function testPush() {
+    return invoke('notify', {
+      title: 'Test von Unser Zuhause',
+      body: 'Wenn du das liest, funktionieren die Benachrichtigungen auf diesem Gerät.',
+      toSelf: true,
+    });
+  }
+
   init();
 
   return {
-    configured, active, email, invoke, notifyPartner, fetchIcsProxy, enablePush,
+    configured, active, email, invoke, notifyPartner, fetchIcsProxy,
+    enablePush, disablePush, pushStatus, testPush,
     logout: async () => { if (client) await client.auth.signOut(); location.reload(); },
   };
 })();
