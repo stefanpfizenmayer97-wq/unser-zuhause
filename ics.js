@@ -17,7 +17,7 @@ function parseICS(text, who) {
   for (const line of unfolded) {
     if (line === 'BEGIN:VEVENT') { cur = {}; continue; }
     if (line === 'END:VEVENT') {
-      if (cur && cur.date && cur.title && !cur.rrule) events.push(cur);
+      if (cur && cur.date && cur.title && !cur.rrule && !cur.holiday) events.push(cur);
       cur = null; continue;
     }
     if (!cur) continue;
@@ -29,6 +29,10 @@ function parseICS(text, who) {
 
     if (key === 'SUMMARY') {
       cur.title = val.replace(/\\,/g, ',').replace(/\\n/g, ' ').replace(/\\;/g, ';');
+      // Feiertags-Einträge aus dem Outlook-Feed ausblenden
+      if (/\bholiday\b|feiertag/i.test(cur.title)) cur.holiday = true;
+    } else if (key === 'CATEGORIES') {
+      if (/holiday|feiertag/i.test(val)) cur.holiday = true;
     } else if (key === 'DTSTART') {
       // Formate: 20260815, 20260815T093000, 20260815T093000Z
       const m = val.match(/^(\d{4})(\d{2})(\d{2})(?:T(\d{2})(\d{2}))?/);
