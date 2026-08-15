@@ -25,6 +25,7 @@ const I = {
   bell: '<path d="M6.5 16v-5.5a5.5 5.5 0 1 1 11 0V16l1.8 2H4.7l1.8-2Z"/><path d="M10.5 21h3"/>',
   moon: '<path d="M20 13.5A8 8 0 1 1 10.5 4 6.5 6.5 0 0 0 20 13.5Z"/>',
   mail: '<rect x="3" y="5" width="18" height="14" rx="3"/><path d="m4 7 8 6 8-6"/>',
+  send: '<path d="M3.5 11.3 20.5 4l-4.4 16.5-4.6-7.2-8-2Z"/><path d="m11.5 13.3 9-9.3"/>',
   case: '<rect x="3.5" y="7.5" width="17" height="12" rx="3"/><path d="M9 7.5V6a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v1.5M3.5 12h17"/>',
   check: '<path d="m5 12.5 4.5 4.5L19 7"/>',
 };
@@ -61,6 +62,7 @@ function emptyState(ic, text) {
 
 /* ---------- Render ---------- */
 function render() {
+  document.body.classList.toggle('chatmode', state.tab === 'chat');
   document.querySelectorAll('#tabbar button').forEach(b => b.classList.toggle('active', b.dataset.tab === state.tab));
   const v = document.getElementById('view');
   const views = { home: renderHome, haushalt: renderHaushalt, kalender: renderKalender, kueche: renderKueche, uns: renderUns, chat: renderChat, settings: renderSettings };
@@ -493,15 +495,32 @@ function openDateNightSheet() {
   `);
 }
 
-/* ---------- Chat ---------- */
-function renderChat() {
-  let html = `<div class="pagehead"><div><h1 class="page">Nachrichten</h1><div class="sub">Nur für uns zwei</div></div>
-    <button class="iconbtn" data-tab="home">${icon('chevL', 18)}</button></div>`;
-  if (!DATA.messages.length) html += emptyState('mail', 'Noch ganz leer hier.');
-  for (const m of DATA.messages) {
-    html += `<div class="bubble ${m.from === me() ? 'me' : 'them'}">${esc(m.text)}<span class="t">${esc(nameOf(m.from))} · ${esc(m.ts || '')}</span></div>`;
+/* ---------- Chat (WhatsApp-Stil) ---------- */
+function msgTime(m) {
+  if (m.at) {
+    const d = new Date(m.at);
+    return String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
   }
-  html += `<div class="chatbar"><input class="f" id="chatInput" placeholder="Nachricht …"><button class="btn" data-action="chat-send">${icon('chevR', 17)}</button></div>`;
+  return m.ts || '';
+}
+function msgDay(m) { return m.at ? toISO(new Date(m.at)) : null; }
+
+function renderChat() {
+  let html = `<div class="pagehead"><div><h1 class="page">${esc(nameOf(partner()))}</h1><div class="sub">Nur für euch zwei</div></div>
+    <button class="iconbtn" data-tab="home">${icon('chevL', 18)}</button></div>`;
+  if (!DATA.messages.length) html += emptyState('mail', 'Noch ganz leer hier – schreib die erste Nachricht.');
+  const gestern = toISO(addDays(new Date(), -1));
+  let lastDay = null;
+  for (const m of DATA.messages) {
+    const day = msgDay(m);
+    if (day && day !== lastDay) {
+      lastDay = day;
+      const label = day === todayISO() ? 'Heute' : day === gestern ? 'Gestern' : fmtShort(day);
+      html += `<div class="datechip"><span>${esc(label)}</span></div>`;
+    }
+    html += `<div class="bubble ${m.from === me() ? 'me' : 'them'}">${esc(m.text)}<span class="bt">${esc(msgTime(m))}</span></div>`;
+  }
+  html += `<div class="chatbar"><input class="f" id="chatInput" placeholder="Nachricht" autocomplete="off"><button class="btn send" data-action="chat-send">${icon('send', 20)}</button></div>`;
   return html;
 }
 
@@ -780,7 +799,7 @@ function handleAction(a, el) {
       const txt = inp.value.trim();
       if (txt) {
         const n = new Date();
-        DATA.messages.push({ id: uid(), from: me(), text: txt, ts: WD[(n.getDay() + 6) % 7] + ' ' + String(n.getHours()).padStart(2, '0') + ':' + String(n.getMinutes()).padStart(2, '0') });
+        DATA.messages.push({ id: uid(), from: me(), text: txt, at: n.toISOString(), ts: WD[(n.getDay() + 6) % 7] + ' ' + String(n.getHours()).padStart(2, '0') + ':' + String(n.getMinutes()).padStart(2, '0') });
         save(); render();
         if (window.UZSync) UZSync.notifyPartner('Nachricht von ' + nameOf(me()), txt.slice(0, 120));
         requestAnimationFrame(() => { window.scrollTo(0, document.body.scrollHeight); const c = document.getElementById('chatInput'); if (c) c.focus(); });
@@ -798,6 +817,7 @@ function handleAction(a, el) {
         try {
           if (window.UZSync && UZSync.active()) {
             await UZSync.enablePush();
+            localStorage.setItem('uz-push-done', '1');
             toast('Push aktiv auf diesem Gerät');
           } else if ('Notification' in window) {
             const p = await Notification.requestPermission();
@@ -819,6 +839,15 @@ function handleAction(a, el) {
       break;
     case 'reset-app-confirm': localStorage.removeItem(DB_KEY); location.reload(); break;
     case 'close-sheet': closeSheet(); break;
+    case 'push-prompt-yes':
+      (async () => {
+        try {
+          await UZSync.enablePush();
+          localStorage.setItem('uz-push-done', '1');
+          closeSheet(); toast('Benachrichtigungen aktiv');
+        } catch (e) { closeSheet(); toast(e.message); }
+      })();
+      break;
     case 'sync-logout': if (window.UZSync) window.UZSync.logout(); break;
 
     /* Sprachfunktion */
@@ -948,6 +977,31 @@ function maybeNotify() {
     : due.length + ' Aufgaben sind diese Woche noch offen.';
   try { new Notification('Unser Zuhause', { body }); } catch (e) {}
   DATA.settings.notified[key] = true; save();
+}
+
+/* ---------- Push-Hinweis beim App-Start ---------- */
+async function maybePushPrompt() {
+  try {
+    if (!window.UZSync || !UZSync.active()) return;
+    if (!('Notification' in window) || !('PushManager' in window) || !('serviceWorker' in navigator)) return;
+    if (localStorage.getItem('uz-push-done')) return;
+    if (Notification.permission === 'denied') return;
+    if (Notification.permission === 'granted') {
+      // Erlaubnis besteht schon (z. B. nach Neuinstallation) – Gerät still neu registrieren
+      await UZSync.enablePush();
+      localStorage.setItem('uz-push-done', '1');
+      return;
+    }
+    if (window._pushPromptShown) return;
+    window._pushPromptShown = true;
+    openSheet(`
+      <h2>Benachrichtigungen aktivieren?</h2>
+      <p class="mut">Dann meldet sich die App, wenn ${esc(nameOf(partner()))} dir schreibt oder etwas ans Schwarze Brett hängt – und jeden Morgen mit deinen Aufgaben und dem Abendessen.</p>
+      <div style="margin-top:14px;display:flex;flex-direction:column;gap:8px">
+        <button class="btn full" data-action="push-prompt-yes">${icon('bell', 16)} Jetzt aktivieren</button>
+        <button class="btn ghost small full" data-action="close-sheet">Später</button>
+      </div>`);
+  } catch (e) { console.warn('Push-Hinweis übersprungen:', e.message); }
 }
 
 render();

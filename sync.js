@@ -84,6 +84,8 @@ window.UZSync = (() => {
         }
       })
       .subscribe();
+    // Kurz nach dem Start freundlich nach Push fragen (falls noch nicht aktiv)
+    if (typeof maybePushPrompt === 'function') setTimeout(maybePushPrompt, 1500);
   }
 
   function applyRemote(remote, ts) {
@@ -164,7 +166,10 @@ window.UZSync = (() => {
     }
     const perm = await Notification.requestPermission();
     if (perm !== 'granted') throw new Error('Benachrichtigungen nicht erlaubt');
-    const reg = await navigator.serviceWorker.ready;
+    const reg = await Promise.race([
+      navigator.serviceWorker.ready,
+      new Promise((_, rej) => setTimeout(() => rej(new Error('App neu laden und nochmal versuchen')), 6000)),
+    ]);
     const sub = await reg.pushManager.subscribe({
       userVisibleOnly: true,
       applicationServerKey: b64ToUint8(cfg.vapidPublicKey),
