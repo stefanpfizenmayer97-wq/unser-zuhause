@@ -118,11 +118,12 @@ function renderHome() {
   const greet = h < 5 ? 'Gute Nacht' : h < 11 ? 'Guten Morgen' : h < 18 ? 'Hallo' : 'Guten Abend';
   const today = todayISO();
   const pn = DATA.notes[partner()];
-  const evToday = eventsOn(today);
+  const mine = e => e.who === 'beide' || e.who === me(); // nur was mich (oder uns) betrifft
+  const evToday = eventsOn(today).filter(mine);
   const meal = DATA.meals[today];
-  const due = openTasks();
+  const dueMine = openTasks().filter(t => taskWho(t) === me());
   const shopOpen = DATA.shopping.filter(i => !i.done).length;
-  const next = nextEvents(1)[0];
+  const next = nextEvents(10).filter(mine)[0];
   const msgs = DATA.messages.slice(-2);
 
   let html = `
@@ -164,7 +165,7 @@ function renderHome() {
 
   html += `<h2 class="sect">Auf einen Blick</h2>
   <div class="stat">
-    <div class="card" data-action="go-haushalt"><div class="num">${due.length}</div><div class="lbl">Aufgaben offen</div></div>
+    <div class="card" data-action="go-haushalt"><div class="num">${dueMine.length}</div><div class="lbl">Aufgaben für dich</div></div>
     <div class="card" data-action="go-einkauf"><div class="num">${shopOpen}</div><div class="lbl">auf der Liste</div></div>
     <div class="card" data-action="go-kalender"><div class="num">${next ? Math.max(0, daysUntil(next.date)) : '–'}</div><div class="lbl">${next ? 'Tage bis „' + esc(next.title.slice(0, 14)) + '“' : 'keine Termine'}</div></div>
   </div>`;
@@ -179,11 +180,11 @@ function renderHome() {
     anyToday = true;
     html += `<div class="row" data-action="go-kueche"><span class="ric">${icon('pot', 18)}</span><div class="grow"><div class="title">${esc(mealName(meal))}</div><div class="meta">Heute Abend auf dem Kochplan</div></div></div>`;
   }
-  for (const t of due.slice(0, 3)) {
+  for (const t of dueMine.slice(0, 3)) {
     anyToday = true;
     html += taskRow(t);
   }
-  if (!anyToday) html += emptyState('star', 'Heute steht nichts an – genießt den Tag!');
+  if (!anyToday) html += emptyState('star', 'Für dich steht heute nichts an – genieß den Tag!');
 
   const un = unreadCount();
   html += `<h2 class="sect">Nachrichten${un ? ' <span class="unread inline">' + un + ' neu</span>' : ''} <span class="more" data-action="open-chat">alle ansehen</span></h2>`;
