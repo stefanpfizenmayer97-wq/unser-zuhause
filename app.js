@@ -103,7 +103,16 @@ function renderHome() {
   if (pn) {
     html += `<div class="notecard"><div class="from">Von ${esc(nameOf(partner()))}</div><div class="txt">${esc(pn)}</div></div>`;
   }
-  html += `<button class="btn ghost small" data-action="edit-note">${icon('pen', 15)} Nachricht für ${esc(nameOf(partner()))} hinterlassen</button>`;
+  const myNote = DATA.notes[me()];
+  if (myNote) {
+    html += `<div class="card" data-action="edit-note" style="border-style:dashed">
+      <div class="hint" style="font-size:12px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;margin-bottom:4px">Deine Nachricht für ${esc(nameOf(partner()))}</div>
+      <div style="font-size:14px">${esc(myNote)}</div>
+      <div class="hint" style="margin-top:6px">${esc(nameOf(partner()))} sieht sie auf ihrem Home-Bildschirm · tippen zum Ändern</div>
+    </div>`;
+  } else {
+    html += `<button class="btn ghost small" data-action="edit-note">${icon('pen', 15)} Nachricht für ${esc(nameOf(partner()))} hinterlassen</button>`;
+  }
 
   html += `<h2 class="sect">Auf einen Blick</h2>
   <div class="stat">
