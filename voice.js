@@ -1,0 +1,215 @@
+/* Unser Zuhause – Sprachfunktion: reden, verstehen, eintragen */
+
+/* ---------- Deutsches Datums-Parsing ---------- */
+const WD_PARSE = { montag: 0, dienstag: 1, mittwoch: 2, donnerstag: 3, freitag: 4, samstag: 5, sonntag: 6 };
+
+function parseDateDE(text) {
+  const t = text.toLowerCase();
+  const out = { date: null, time: null, matched: [] };
+
+  if (t.includes('übermorgen')) { out.date = toISO(addDays(new Date(), 2)); out.matched.push('übermorgen'); }
+  else if (t.includes('morgen') && !t.includes('guten morgen')) { out.date = toISO(addDays(new Date(), 1)); out.matched.push('morgen'); }
+  else if (t.includes('heute')) { out.date = todayISO(); out.matched.push('heute'); }
+
+  for (const [wd, i] of Object.entries(WD_PARSE)) {
+    if (t.includes(wd)) {
+      const now = new Date();
+      const cur = (now.getDay() + 6) % 7;
+      let diff = (i - cur + 7) % 7;
+      if (diff === 0 && !t.includes('heute')) diff = 7; // "Montag" = nächster Montag
+      out.date = toISO(addDays(now, diff));
+      out.matched.push(wd);
+      break;
+    }
+  }
+
+  // 15.9. oder 15.09.2026
+  const dm = t.match(/\b(\d{1,2})\.(\d{1,2})\.?(\d{4})?\b/);
+  if (dm) {
+    const y = dm[3] ? +dm[3] : new Date().getFullYear();
+    let d = new Date(y, +dm[2] - 1, +dm[1]);
+    if (!dm[3] && d < addDays(new Date(), -1)) d = new Date(y + 1, +dm[2] - 1, +dm[1]);
+    out.date = toISO(d);
+    out.matched.push(dm[0]);
+  }
+
+  // "um 18 uhr", "18:30"
+  const tm = t.match(/\b(?:um\s+)?(\d{1,2})(?::(\d{2}))?\s*uhr\b/) || t.match(/\b(\d{1,2}):(\d{2})\b/);
+  if (tm) {
+    out.time = String(+tm[1]).padStart(2, '0') + ':' + (tm[2] || '00');
+    out.matched.push(tm[0]);
+  }
+  return out;
+}
+
+function stripMatched(text, parsed) {
+  let t = text;
+  for (const m of parsed.matched) {
+    t = t.replace(new RegExp('(am|um|für)?\\s*' + m.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i'), ' ');
+  }
+  return t.replace(/\s+/g, ' ').trim();
+}
+
+function detectPerson(text) {
+  const t = text.toLowerCase();
+  if (t.includes('linda')) return 'linda';
+  if (t.includes('stefan')) return 'stefan';
+  return null;
+}
+
+/* ---------- Absicht erkennen ---------- */
+function parseVoice(raw) {
+  const text = raw.trim().replace(/[.!]+$/, '');
+  const t = text.toLowerCase();
+  const parsed = parseDateDE(text);
+
+  // Einkaufsliste
+  if (/(einkaufsliste|einkaufszettel|auf die liste|einkaufen:|kauf ein)/.test(t)) {
+    let items = text
+      .replace(/.*?(?:einkaufsliste|einkaufszettel|liste)[:\s]*/i, '')
+      .replace(/\b(auf die|bitte|setzen?|schreib|noch|und zwar)\b/gi, ' ');
+    if (/auf die (einkaufsliste|liste)/i.test(text)) {
+      items = text.replace(/\s*(bitte\s*)?auf die (einkaufsliste|liste)( setzen| schreiben)?\.?\s*$/i, '')
+        .replace(/^(setz|schreib|pack)\s*/i, '');
+    }
+    const list = items.split(/,| und /i).map(s => s.trim()).filter(s => s.length > 1);
+    if (list.length) return { kind: 'shopping', items: list };
+  }
+
+  // Kochplan
+  if (/(kochplan|einplanen|kochen wir|essen wir|zum abendessen|gibt es)/.test(t) && parsed.date) {
+    let dish = stripMatched(text, parsed)
+      .replace(/\b(für|am|bitte|kochplan|einplanen|in den|auf den|kochen wir|essen wir|zum abendessen|gibt es|dann)\b/gi, ' ')
+      .replace(/\s+/g, ' ').trim();
+    dish = dish.replace(/^[,\s]+|[,\s]+$/g, '');
+    if (dish) return { kind: 'meal', date: parsed.date, dish };
+  }
+
+  // Termin
+  if (/(termin|kalender|treffen|verabredet|essen gehen|kino|arzt|friseur|zahnarzt)/.test(t) || (parsed.date && parsed.time)) {
+    let title = stripMatched(text, parsed)
+      .replace(/\b(termin|in den kalender|kalender|eintragen|bitte|am|um|hab ich|habe ich|haben wir|ist)\b/gi, ' ')
+      .replace(/\s+/g, ' ').trim();
+    title = title.replace(/^[,\s]+|[,\s]+$/g, '');
+    if (parsed.date && title) {
+      return { kind: 'event', date: parsed.date, time: parsed.time || '', title, who: detectPerson(text) || 'beide' };
+    }
+  }
+
+  // To-do (Standard)
+  let title = stripMatched(text, parsed)
+    .replace(/\b(to.?do|aufgabe|erinnere (mich|uns)|bitte|muss noch|müssen noch|muss|müssen|soll|sollte|nicht vergessen|dran denken)\b/gi, ' ')
+    .replace(/\s+/g, ' ').trim();
+  title = title.replace(/^[,\s]+|[,\s]+$/g, '');
+  const who = detectPerson(text);
+  let cleanTitle = title;
+  if (who) cleanTitle = title.replace(new RegExp('\\b' + NAMES[who] + '\\b[,]?', 'i'), '').replace(/\s+/g, ' ').trim();
+  return { kind: 'todo', title: cleanTitle || text, who: who || 'beide', due: parsed.date || '' };
+}
+
+/* ---------- Aufnahme ---------- */
+let recog = null;
+
+function startVoice() {
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SR) { openVoiceTextFallback(); return; }
+
+  let finalText = '';
+  recog = new SR();
+  recog.lang = 'de-DE';
+  recog.interimResults = true;
+  recog.continuous = false;
+
+  openSheet(`
+    <h2>Ich höre zu …</h2>
+    <div class="voicebox">
+      <div class="live" id="voiceLive">Sag z.&nbsp;B.: „Mittwoch um 18 Uhr Zahnarzt“ oder<br>„Parmesan und Milch auf die Einkaufsliste“</div>
+      <button class="btn ghost" data-action="voice-stop">Fertig</button>
+    </div>
+  `);
+  document.getElementById('micBtn').classList.add('listening');
+
+  recog.onresult = ev => {
+    let interim = '';
+    for (let i = ev.resultIndex; i < ev.results.length; i++) {
+      if (ev.results[i].isFinal) finalText += ev.results[i][0].transcript;
+      else interim += ev.results[i][0].transcript;
+    }
+    const el = document.getElementById('voiceLive');
+    if (el) el.textContent = (finalText + ' ' + interim).trim() || '…';
+  };
+  recog.onerror = () => { stopVoiceUI(); openVoiceTextFallback(); };
+  recog.onend = () => {
+    stopVoiceUI();
+    if (finalText.trim()) confirmVoice(parseVoice(finalText));
+    else closeSheet();
+  };
+  recog.start();
+}
+
+function stopVoiceRecognition() { if (recog) { try { recog.stop(); } catch (e) {} } }
+function stopVoiceUI() { document.getElementById('micBtn').classList.remove('listening'); }
+
+function openVoiceTextFallback() {
+  openSheet(`
+    <h2>Sag mir, was ansteht</h2>
+    <p class="mut">Tipp: Auf dem iPhone kannst du hier auch die Diktier-Taste der Tastatur nutzen.</p>
+    <input class="f" id="voiceText" placeholder="z. B. Freitag um 19 Uhr Kino mit Linda" autofocus>
+    <div style="margin-top:14px">
+      <button class="btn full" data-action="voice-text-go">Verstehen &amp; eintragen</button>
+    </div>
+  `);
+}
+
+/* ---------- Bestätigung ---------- */
+function confirmVoice(p) {
+  if (p.kind === 'shopping') {
+    openSheet(`
+      <h2>Auf die Einkaufsliste?</h2>
+      ${p.items.map(i => `<div class="row"><div class="grow"><div class="title">${esc(i)}</div><div class="meta">${esc(guessCat(i))}</div></div></div>`).join('')}
+      <button class="btn full" data-action="voice-add-shopping" data-items="${esc(JSON.stringify(p.items))}">Ja, eintragen</button>
+    `);
+  } else if (p.kind === 'meal') {
+    openSheet(`
+      <h2>In den Kochplan?</h2>
+      <label class="f">Gericht</label>
+      <input class="f" id="vmDish" value="${esc(p.dish)}">
+      <label class="f">Datum</label>
+      <input class="f" id="vmDate" type="date" value="${p.date}">
+      <div style="margin-top:14px"><button class="btn full" data-action="voice-add-meal">Eintragen</button></div>
+    `);
+  } else if (p.kind === 'event') {
+    openSheet(`
+      <h2>Neuer Termin?</h2>
+      <label class="f">Titel</label>
+      <input class="f" id="veTitle" value="${esc(p.title)}">
+      <div class="frow">
+        <div><label class="f">Datum</label><input class="f" id="veDate" type="date" value="${p.date}"></div>
+        <div><label class="f">Uhrzeit</label><input class="f" id="veTime" type="time" value="${p.time}"></div>
+      </div>
+      <label class="f">Wer?</label>
+      <select class="f" id="veWho">
+        <option value="beide" ${p.who === 'beide' ? 'selected' : ''}>Wir beide</option>
+        <option value="stefan" ${p.who === 'stefan' ? 'selected' : ''}>Stefan</option>
+        <option value="linda" ${p.who === 'linda' ? 'selected' : ''}>Linda</option>
+      </select>
+      <div style="margin-top:14px"><button class="btn full" data-action="voice-add-event">Eintragen</button></div>
+    `);
+  } else {
+    openSheet(`
+      <h2>Neues To-do?</h2>
+      <label class="f">Aufgabe</label>
+      <input class="f" id="vtTitle" value="${esc(p.title)}">
+      <div class="frow">
+        <div><label class="f">Wer?</label>
+          <select class="f" id="vtWho">
+            <option value="beide" ${p.who === 'beide' ? 'selected' : ''}>Beide</option>
+            <option value="stefan" ${p.who === 'stefan' ? 'selected' : ''}>Stefan</option>
+            <option value="linda" ${p.who === 'linda' ? 'selected' : ''}>Linda</option>
+          </select></div>
+        <div><label class="f">Bis wann?</label><input class="f" id="vtDue" type="date" value="${p.due}"></div>
+      </div>
+      <div style="margin-top:14px"><button class="btn full" data-action="voice-add-todo">Eintragen</button></div>
+    `);
+  }
+}
