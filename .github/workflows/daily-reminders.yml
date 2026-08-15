@@ -1,0 +1,16 @@
+name: Tägliche Erinnerungen
+
+on:
+  schedule:
+    - cron: "0 5 * * *" # 07:00 Sommerzeit / 06:00 Winterzeit (Berlin)
+  workflow_dispatch: {}
+
+jobs:
+  remind:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Erinnerungs-Funktion aufrufen
+        run: |
+          curl -fsS -X POST \
+            "https://kpzutmtkouwamtqcgmux.supabase.co/functions/v1/daily-reminders" \
+            -H "x-cron-secret: ${{ secrets.CRON_SECRET }}"

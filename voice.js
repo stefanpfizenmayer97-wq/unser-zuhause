@@ -141,10 +141,28 @@ function startVoice() {
   recog.onerror = () => { stopVoiceUI(); openVoiceTextFallback(); };
   recog.onend = () => {
     stopVoiceUI();
-    if (finalText.trim()) confirmVoice(parseVoice(finalText));
+    if (finalText.trim()) understandVoice(finalText);
     else closeSheet();
   };
   recog.start();
+}
+
+/* Erst die KI fragen (versteht freie Sprache), sonst der eingebaute Regel-Parser */
+async function understandVoice(text) {
+  if (window.UZSync && UZSync.active()) {
+    openSheet('<h2>Einen Moment …</h2><div class="voicebox"><div class="live">Ich überlege, was du meinst.</div></div>');
+    try {
+      const r = await UZSync.invoke('ai', { mode: 'parse', text, today: todayISO() });
+      const a = r.action || {};
+      if (a.kind === 'shopping' && (a.items || []).length) return confirmVoice({ kind: 'shopping', items: a.items });
+      if (a.kind === 'meal' && a.dish) return confirmVoice({ kind: 'meal', date: a.date || todayISO(), dish: a.dish });
+      if (a.kind === 'event' && a.title) return confirmVoice({ kind: 'event', date: a.date || todayISO(), time: a.time || '', title: a.title, who: a.who || 'beide' });
+      if (a.kind === 'todo' && a.title) return confirmVoice({ kind: 'todo', title: a.title, who: a.who || 'beide', due: a.date || '' });
+    } catch (e) {
+      console.warn('KI-Verstehen nicht verfügbar, nutze Regel-Parser:', e.message);
+    }
+  }
+  confirmVoice(parseVoice(text));
 }
 
 function stopVoiceRecognition() { if (recog) { try { recog.stop(); } catch (e) {} } }

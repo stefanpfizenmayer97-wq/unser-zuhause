@@ -1,7 +1,5 @@
-/* Unser Zuhause – Live-Sync über Supabase.
-   Aktiviert sich automatisch, sobald config.js ausgefüllt ist.
-   Ablauf: Login (nur Linda & Stefan) → Stand abgleichen → Realtime-Kanal:
-   jede Änderung landet in Sekunden auf dem anderen iPhone. */
+/* Unser Zuhause – Live-Sync, Push & KI-Anbindung über Supabase.
+   Aktiviert sich automatisch, sobald config.js ausgefüllt ist. */
 
 window.UZSync = (() => {
   const cfg = window.UZ_CONFIG || {};
@@ -10,6 +8,7 @@ window.UZSync = (() => {
   const configured = () => !!(cfg.supabaseUrl && cfg.supabaseAnonKey);
   const active = () => !!(client && session);
   const email = () => (session && session.user && session.user.email) || '';
+  const fnUrl = (name) => cfg.supabaseUrl + '/functions/v1/' + name;
 
   async function init() {
     if (!configured()) return; // rein lokaler Modus
@@ -55,8 +54,23 @@ window.UZSync = (() => {
     w.querySelector('#loginPw').addEventListener('keydown', e => { if (e.key === 'Enter') go(); });
   }
 
+  /* ---------- Wer ist angemeldet? ---------- */
+  const EMAIL_TO_PERSON = {
+    'stefanpfizenmayer97@gmail.com': 'stefan',
+    'lindakuepfer@gmx.de': 'linda',
+  };
+  function applyIdentity() {
+    const p = EMAIL_TO_PERSON[email().toLowerCase()];
+    if (p && DATA.settings.me !== p) {
+      DATA.settings.me = p;
+      localStorage.setItem(DB_KEY, JSON.stringify(DATA));
+      if (typeof render === 'function') render();
+    }
+  }
+
   /* ---------- Abgleich & Realtime ---------- */
   async function start() {
+    applyIdentity(); // Login bestimmt, wer "ich" bin – kein manuelles Umschalten nötig
     const { data: row } = await client.from('household').select('data, updated_at').eq('id', 1).maybeSingle();
     if (row && row.data && (!DATA._syncedAt || row.updated_at > DATA._syncedAt)) {
       applyRemote(row.data, row.updated_at);
@@ -74,7 +88,8 @@ window.UZSync = (() => {
 
   function applyRemote(remote, ts) {
     applyingRemote = true;
-    const meKeep = DATA.settings.me; // "Wer bist du?" bleibt Geräteeinstellung
+    // Identität kommt vom Login, nicht aus den gesyncten Daten
+    const meKeep = EMAIL_TO_PERSON[email().toLowerCase()] || DATA.settings.me;
     DATA = remote;
     DATA.settings = DATA.settings || {};
     DATA.settings.me = meKeep;
@@ -99,10 +114,73 @@ window.UZSync = (() => {
   }
   window.onDataSaved = schedulePush;
 
+  /* ---------- Edge Functions aufrufen ---------- */
+  async function invoke(name, body) {
+    if (!active()) throw new Error('Nicht angemeldet');
+    const res = await fetch(fnUrl(name), {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer ' + session.access_token,
+        'apikey': cfg.supabaseAnonKey,
+      },
+      body: JSON.stringify(body || {}),
+    });
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok) { const err = new Error(json.error || ('HTTP ' + res.status)); err.status = res.status; throw err; }
+    return json;
+  }
+
+  /* Push an den Partner – bewusst "fire and forget" */
+  function notifyPartner(title, body) {
+    if (!active()) return;
+    invoke('notify', { title, body }).catch(e => console.warn('Push nicht gesendet:', e.message));
+  }
+
+  /* Outlook-ICS über den Server-Proxy laden (umgeht CORS) */
+  async function fetchIcsProxy(url) {
+    if (!active()) throw new Error('Nicht angemeldet');
+    const res = await fetch(fnUrl('ics-proxy') + '?url=' + encodeURIComponent(url), {
+      headers: {
+        'Authorization': 'Bearer ' + session.access_token,
+        'apikey': cfg.supabaseAnonKey,
+      },
+    });
+    if (!res.ok) throw new Error('Proxy: HTTP ' + res.status);
+    return res.text();
+  }
+
+  /* ---------- Push-Benachrichtigungen auf diesem Gerät ---------- */
+  function b64ToUint8(base64) {
+    const padding = '='.repeat((4 - base64.length % 4) % 4);
+    const raw = atob((base64 + padding).replace(/-/g, '+').replace(/_/g, '/'));
+    return Uint8Array.from([...raw].map(c => c.charCodeAt(0)));
+  }
+
+  async function enablePush() {
+    if (!active()) throw new Error('Erst anmelden');
+    if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
+      throw new Error('Push wird hier nicht unterstützt – App zum Home-Bildschirm hinzufügen (iOS 16.4+)');
+    }
+    const perm = await Notification.requestPermission();
+    if (perm !== 'granted') throw new Error('Benachrichtigungen nicht erlaubt');
+    const reg = await navigator.serviceWorker.ready;
+    const sub = await reg.pushManager.subscribe({
+      userVisibleOnly: true,
+      applicationServerKey: b64ToUint8(cfg.vapidPublicKey),
+    });
+    const { error } = await client.from('push_subscriptions').insert({
+      email: email(),
+      subscription: sub.toJSON(),
+    });
+    if (error && error.code !== '23505') throw new Error(error.message); // 23505 = schon registriert
+    return true;
+  }
+
   init();
 
   return {
-    configured, active, email,
+    configured, active, email, invoke, notifyPartner, fetchIcsProxy, enablePush,
     logout: async () => { if (client) await client.auth.signOut(); location.reload(); },
   };
 })();

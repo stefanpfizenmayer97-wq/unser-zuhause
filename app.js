@@ -377,7 +377,10 @@ function shopRow(i) {
 }
 
 function renderRecipes() {
-  let html = `<button class="btn ghost full" data-action="add-recipe" style="margin-bottom:12px">${icon('plus', 16)} Neues Rezept</button>`;
+  let html = `<div style="display:flex;flex-direction:column;gap:8px;margin-bottom:12px">
+    <button class="btn ghost full" data-action="add-recipe">${icon('plus', 16)} Neues Rezept</button>
+    <button class="btn full" data-action="ai-recipe-open">${icon('spark', 16)} Rezept mit KI erfinden</button>
+  </div>`;
   for (const r of DATA.recipes) {
     html += `<div class="row" data-action="recipe-detail" data-id="${r.id}">
       <span class="ric">${icon('pot', 18)}</span>
@@ -507,11 +510,14 @@ function renderSettings() {
 
   <h2 class="sect">Wer bist du?</h2>
   <div class="card">
-    <select class="f" id="setMe">
-      <option value="stefan" ${me() === 'stefan' ? 'selected' : ''}>Stefan</option>
-      <option value="linda" ${me() === 'linda' ? 'selected' : ''}>Linda</option>
-    </select>
-    <div class="hint" style="margin-top:8px">Auf Lindas iPhone einfach „Linda“ auswählen – dann stimmen Begrüßung, Chat und Notizen.</div>
+    ${sync && sync.active()
+      ? `<div>Du bist als <b>${esc(nameOf(me()))}</b> angemeldet (${esc(sync.email())}).</div>
+         <div class="hint" style="margin-top:8px">Die App erkennt am Login automatisch, wer du bist – Begrüßung, Chat und Notizen stimmen auf jedem Gerät.</div>`
+      : `<select class="f" id="setMe">
+           <option value="stefan" ${me() === 'stefan' ? 'selected' : ''}>Stefan</option>
+           <option value="linda" ${me() === 'linda' ? 'selected' : ''}>Linda</option>
+         </select>
+         <div class="hint" style="margin-top:8px">Ohne Anmeldung kannst du hier manuell wählen. Sobald du angemeldet bist, geht das automatisch.</div>`}
   </div>
 
   <h2 class="sect">Gemeinsamer Sync</h2>
@@ -563,7 +569,11 @@ function handleAction(a, el) {
       break;
     case 'save-note':
       DATA.notes[me()] = document.getElementById('noteText').value.trim();
-      save(); closeSheet(); render(); toast('Hinterlassen'); break;
+      save(); closeSheet(); render(); toast('Hinterlassen');
+      if (DATA.notes[me()] && window.UZSync) {
+        UZSync.notifyPartner(nameOf(me()) + ' hat etwas ans Schwarze Brett geschrieben', DATA.notes[me()].slice(0, 120));
+      }
+      break;
     case 'edit-highlight':
       openSheet(`<h2>Highlight der Woche</h2>
         <textarea class="f" id="hlText">${esc(DATA.us.highlight)}</textarea>
@@ -664,6 +674,45 @@ function handleAction(a, el) {
       break;
     }
     case 'del-recipe': DATA.recipes = DATA.recipes.filter(r => r.id !== id); save(); closeSheet(); render(); break;
+    case 'ai-recipe-open':
+      openSheet(`<h2>Rezept erfinden</h2>
+        <label class="f">Worauf habt ihr Lust?</label>
+        <input class="f" id="aiWish" placeholder="z. B. schnell &amp; vegetarisch, was mit Kürbis …">
+        <div style="margin-top:14px"><button class="btn full" data-action="ai-recipe-go">Vorschlag holen</button></div>
+        <div class="mut" style="margin-top:8px">Die KI erfindet ein Gericht samt Zutaten – speichern kannst du es danach.</div>`);
+      break;
+    case 'ai-recipe-go': {
+      const wishEl = document.getElementById('aiWish');
+      if (wishEl) state._aiWish = wishEl.value.trim();
+      if (!window.UZSync || !UZSync.active()) { toast('Erst anmelden'); break; }
+      openSheet('<h2>Einen Moment …</h2><div class="voicebox"><div class="live">Ich überlege mir ein Rezept.</div></div>');
+      UZSync.invoke('ai', { mode: 'recipe', wish: state._aiWish || '', recipes: DATA.recipes.map(r => r.name) })
+        .then(r => {
+          const rec = r.recipe;
+          state._aiRecipe = rec;
+          openSheet(`<h2>${esc(rec.name)}</h2>
+            ${rec.hinweis ? '<div class="card sand">' + esc(rec.hinweis) + '</div>' : ''}
+            ${rec.ing.map(i => '<div class="row"><div class="grow"><div class="title" style="font-weight:500">' + esc(i) + '</div><div class="meta">' + esc(guessCat(i)) + '</div></div></div>').join('')}
+            <div style="margin-top:12px;display:flex;gap:8px">
+              <button class="btn ghost" data-action="ai-recipe-go">Anderer Vorschlag</button>
+              <button class="btn" style="flex:1" data-action="ai-recipe-save">Speichern</button>
+            </div>`);
+        })
+        .catch(e => {
+          openSheet(`<h2>Das hat nicht geklappt</h2>
+            <p class="mut">${e.status === 503 ? 'Die KI ist noch nicht eingerichtet – der Claude-API-Schlüssel fehlt auf dem Server.' : esc(e.message)}</p>
+            <div style="margin-top:14px"><button class="btn full" data-action="close-sheet">OK</button></div>`);
+        });
+      break;
+    }
+    case 'ai-recipe-save': {
+      const rec = state._aiRecipe;
+      if (rec && rec.name) {
+        DATA.recipes.push({ id: uid(), name: rec.name, ing: rec.ing || [] });
+        save(); closeSheet(); state.tab = 'kueche'; state.kueche = 'rezepte'; render(); toast('Rezept gespeichert');
+      }
+      break;
+    }
 
     /* Uns */
     case 'add-usdate':
@@ -724,6 +773,7 @@ function handleAction(a, el) {
         const n = new Date();
         DATA.messages.push({ id: uid(), from: me(), text: txt, ts: WD[(n.getDay() + 6) % 7] + ' ' + String(n.getHours()).padStart(2, '0') + ':' + String(n.getMinutes()).padStart(2, '0') });
         save(); render();
+        if (window.UZSync) UZSync.notifyPartner('Nachricht von ' + nameOf(me()), txt.slice(0, 120));
         requestAnimationFrame(() => { window.scrollTo(0, document.body.scrollHeight); const c = document.getElementById('chatInput'); if (c) c.focus(); });
       }
       break;
@@ -735,8 +785,19 @@ function handleAction(a, el) {
       DATA.settings.icsLinda = document.getElementById('setIcsLinda').value.trim();
       save(); refreshIcs(false); break;
     case 'notif-enable':
-      if (!('Notification' in window)) { toast('Erst als App installieren'); break; }
-      Notification.requestPermission().then(p => toast(p === 'granted' ? 'Benachrichtigungen aktiv' : 'Nicht erlaubt'));
+      (async () => {
+        try {
+          if (window.UZSync && UZSync.active()) {
+            await UZSync.enablePush();
+            toast('Push aktiv auf diesem Gerät');
+          } else if ('Notification' in window) {
+            const p = await Notification.requestPermission();
+            toast(p === 'granted' ? 'Benachrichtigungen aktiv' : 'Nicht erlaubt');
+          } else {
+            toast('Erst als App installieren');
+          }
+        } catch (e) { toast(e.message); }
+      })();
       break;
     case 'export-data': exportData(); break;
     case 'reset-app':
@@ -755,7 +816,7 @@ function handleAction(a, el) {
     case 'voice-stop': stopVoiceRecognition(); break;
     case 'voice-text-go': {
       const v = document.getElementById('voiceText').value.trim();
-      if (v) confirmVoice(parseVoice(v));
+      if (v) understandVoice(v);
       break;
     }
     case 'voice-add-shopping': {
@@ -780,8 +841,10 @@ function handleAction(a, el) {
     case 'voice-add-todo': {
       const title = document.getElementById('vtTitle').value.trim();
       if (title) {
-        DATA.todos.push({ id: uid(), title, who: document.getElementById('vtWho').value, due: document.getElementById('vtDue').value, done: false });
+        const who = document.getElementById('vtWho').value;
+        DATA.todos.push({ id: uid(), title, who, due: document.getElementById('vtDue').value, done: false });
         save(); closeSheet(); state.tab = 'haushalt'; render(); toast('To-do angelegt');
+        if (who === partner() && window.UZSync) UZSync.notifyPartner('Neues To-do für dich', title);
       }
       break;
     }
@@ -800,7 +863,16 @@ async function refreshIcs(silent) {
       const evs = await fetchICSUrl(url, who);
       replaceIcsEvents(who, evs);
       ok += evs.length;
-    } catch (e) { fail.push(nameOf(who)); }
+    } catch (e) {
+      // Direktabruf blockiert (CORS)? Über den Server-Proxy versuchen.
+      try {
+        if (!window.UZSync || !UZSync.active()) throw e;
+        const text = await UZSync.fetchIcsProxy(url);
+        const evs = parseICS(text, who);
+        replaceIcsEvents(who, evs);
+        ok += evs.length;
+      } catch (e2) { fail.push(nameOf(who)); }
+    }
   }
   if (ok || !fail.length) {
     const n = new Date();
