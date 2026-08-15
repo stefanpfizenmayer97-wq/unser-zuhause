@@ -254,13 +254,15 @@ function renderHaushalt() {
   }
 
   html += `<h2 class="sect">Einmalige To-dos</h2>
-  <div class="addbar"><input class="f" id="todoInput" placeholder="Neues To-do …"><button class="btn" data-action="todo-add">${icon('plus', 17)}</button></div>`;
+  <div class="addbar"><input class="f" id="todoInput" placeholder="Neues To-do …"><button class="btn" data-action="todo-add">${icon('plus', 17)}</button></div>
+  ${DATA.todos.length ? '<div class="mut" style="margin:2px 2px 8px">Tipp: aufs Namens-Kärtchen tippen, um das To-do Stefan, Linda oder beiden zuzuweisen.</div>' : ''}`;
   const todos = DATA.todos.slice().sort((a, b) => (a.done === b.done) ? 0 : a.done ? 1 : -1);
   for (const t of todos) {
+    const w = t.who || 'beide';
     html += `<div class="row ${t.done ? 'done' : ''}">
       <button class="check ${t.done ? 'on' : ''}" data-action="todo-toggle" data-id="${t.id}">${icon('check', 15)}</button>
       <div class="grow"><div class="title">${esc(t.title)}</div><div class="meta">${t.due ? 'bis ' + esc(fmtShort(t.due)) : ''}</div></div>
-      ${whoChip(t.who || 'beide')}
+      <span class="chip ${esc(w)}" data-action="todo-who" data-id="${t.id}" style="cursor:pointer">${w === 'beide' ? 'Beide' : esc(nameOf(w))}</span>
     </div>`;
   }
   if (DATA.todos.some(t => t.done)) html += `<button class="btn ghost small" data-action="todo-clear">Erledigte entfernen</button>`;
@@ -793,6 +795,15 @@ function handleAction(a, el) {
       break;
     }
     case 'todo-toggle': { const t = DATA.todos.find(x => x.id === id); if (t) { t.done = !t.done; save(); render(); } break; }
+    case 'todo-who': {
+      const t = DATA.todos.find(x => x.id === id);
+      if (t) {
+        const order = ['beide', 'stefan', 'linda'];
+        t.who = order[(order.indexOf(t.who || 'beide') + 1) % order.length];
+        save(); render();
+      }
+      break;
+    }
     case 'todo-clear': DATA.todos = DATA.todos.filter(t => !t.done); save(); render(); break;
 
     /* Kalender */
@@ -1269,6 +1280,13 @@ async function maybePushPrompt() {
       </div>`);
   } catch (e) { console.warn('Push-Hinweis übersprungen:', e.message); }
 }
+
+/* Einmalige Aufräumaktion: bereits geladene Outlook-Feiertage entfernen */
+(() => {
+  const before = (DATA.icsEvents || []).length;
+  DATA.icsEvents = (DATA.icsEvents || []).filter(e => !/\bholiday\b|feiertag/i.test(e.title));
+  if (DATA.icsEvents.length !== before) save();
+})();
 
 render();
 maybeNotify();
