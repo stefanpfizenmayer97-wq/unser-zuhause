@@ -309,10 +309,22 @@ function renderHaushalt() {
     html += `<h2 class="sect">Schon erledigt</h2>` + done.map(taskRow).join('');
   }
 
-  html += `<h2 class="sect">Gemeinsame To-dos</h2>
-  <div class="addbar"><input class="f" id="todoInput" placeholder="Neues To-do …"><button class="btn" data-action="todo-add">${icon('plus', 17)}</button></div>
-  <div class="mut" style="margin:2px 2px 8px">Neue To-dos landen hier – antippen, um sie Stefan oder Linda zuzuschieben.</div>`;
-  for (const t of DATA.todos.filter(t => !t.done && (t.who || 'beide') === 'beide')) {
+  html += `<h2 class="sect">Neues To-do</h2>
+  <div class="addbar">
+    <input class="f" id="todoInput" placeholder="Was steht an?">
+    <select class="f" id="todoWho" style="flex:none;width:auto;padding:12px 8px">
+      <option value="beide">Beide</option>
+      <option value="stefan">Stefan</option>
+      <option value="linda">Linda</option>
+    </select>
+    <button class="btn" data-action="todo-add">${icon('plus', 17)}</button>
+  </div>
+  <div class="mut" style="margin:2px 2px 8px">Direkt zuweisen – oder später per Antippen zuschieben.</div>
+
+  <h2 class="sect">Gemeinsame To-dos</h2>`;
+  const beideTodos = DATA.todos.filter(t => !t.done && (t.who || 'beide') === 'beide');
+  if (!beideTodos.length) html += `<div class="card"><div class="hint">Gerade keine gemeinsamen To-dos – Stefans und Lindas stehen oben in den Spalten.</div></div>`;
+  for (const t of beideTodos) {
     html += `<div class="row">
       <button class="check" data-action="todo-toggle" data-id="${t.id}">${icon('check', 15)}</button>
       <div class="grow" data-action="todo-assign" data-id="${t.id}"><div class="title">${esc(t.title)}</div><div class="meta">${t.due ? 'bis ' + esc(fmtShort(t.due)) : 'gemeinsam'}</div></div>
@@ -926,9 +938,14 @@ function handleAction(a, el) {
     case 'todo-add': {
       const inp = document.getElementById('todoInput');
       if (inp.value.trim()) {
-        DATA.todos.push({ id: uid(), title: inp.value.trim(), who: 'beide', due: '', done: false });
+        const whoSel = document.getElementById('todoWho');
+        const who = whoSel ? whoSel.value : 'beide';
+        const title = inp.value.trim();
+        DATA.todos.push({ id: uid(), title, who, due: '', done: false });
         save(); render();
-        pingPartner('Neues gemeinsames To-do', inp.value.trim());
+        if (who === 'beide') pingPartner('Neues gemeinsames To-do', title);
+        else if (who === partner()) pingPartner('Neues To-do für dich', title);
+        toast(who === 'beide' ? 'Bei den gemeinsamen To-dos' : 'In ' + nameOf(who) + 's Spalte gelegt');
       }
       break;
     }

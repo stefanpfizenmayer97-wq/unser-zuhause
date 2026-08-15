@@ -1,5 +1,5 @@
 /* Unser Zuhause – Service Worker (offlinefähig, Netz zuerst) */
-const CACHE = 'uz-v17';
+const CACHE = 'uz-v18';
 const SHELL = ['./', 'index.html', 'styles.css', 'store.js', 'ics.js', 'voice.js', 'app.js', 'config.js', 'sync.js', 'manifest.webmanifest', 'icons/icon-192.png', 'icons/icon-512.png', 'icons/icon-180.png'];
 
 self.addEventListener('install', e => {

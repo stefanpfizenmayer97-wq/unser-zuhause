@@ -92,6 +92,23 @@ window.UZSync = (() => {
     if (typeof maybePushPrompt === 'function') setTimeout(maybePushPrompt, 1500);
   }
 
+  /* Beim Zurückkehren in die App (Gerät wacht auf): erst frischen Stand holen,
+     bevor eigene Änderungen rausgehen – verhindert Überschreiben mit altem Stand. */
+  async function refresh() {
+    if (!active()) return;
+    try {
+      const { data: row } = await client.from('household').select('data, updated_at').eq('id', 1).maybeSingle();
+      if (row && row.data) {
+        const remoteTs = new Date(row.updated_at).getTime();
+        const localTs = DATA._syncedAt ? new Date(DATA._syncedAt).getTime() : 0;
+        if (remoteTs > localTs) applyRemote(row.data, row.updated_at);
+      }
+    } catch (e) { console.warn('Sync-Refresh fehlgeschlagen:', e.message); }
+  }
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') refresh();
+  });
+
   function applyRemote(remote, ts) {
     applyingRemote = true;
     // Identität kommt vom Login, nicht aus den gesyncten Daten
