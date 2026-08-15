@@ -1,5 +1,5 @@
 /* Unser Zuhause – Service Worker (offlinefähig, Netz zuerst) */
-const CACHE = 'uz-v16';
+const CACHE = 'uz-v17';
 const SHELL = ['./', 'index.html', 'styles.css', 'store.js', 'ics.js', 'voice.js', 'app.js', 'config.js', 'sync.js', 'manifest.webmanifest', 'icons/icon-192.png', 'icons/icon-512.png', 'icons/icon-180.png'];
 
 self.addEventListener('install', e => {
@@ -19,9 +19,11 @@ self.addEventListener('push', e => {
     badge: 'icons/icon-192.png',
     data: { url: d.url || './' },
   }));
+  try { if (self.navigator && self.navigator.setAppBadge) self.navigator.setAppBadge(); } catch (err) {}
 });
 self.addEventListener('notificationclick', e => {
   e.notification.close();
+  try { if (self.navigator && self.navigator.clearAppBadge) self.navigator.clearAppBadge(); } catch (err) {}
   e.waitUntil(clients.matchAll({ type: 'window', includeUncontrolled: true }).then(list => {
     for (const c of list) { if ('focus' in c) return c.focus(); }
     return clients.openWindow(e.notification.data?.url || './');

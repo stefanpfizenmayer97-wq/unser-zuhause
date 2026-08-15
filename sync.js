@@ -79,7 +79,11 @@ window.UZSync = (() => {
     }
     client.channel('household-sync')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'household', filter: 'id=eq.1' }, payload => {
-        if (payload.new && payload.new.data && payload.new.updated_at !== DATA._syncedAt) {
+        // Eigenes Echo überspringen (Zeitformate können abweichen → als Zeitpunkt vergleichen),
+        // sonst überschreibt es bei schnellen Klicks gerade gemachte Änderungen.
+        const remoteTs = payload.new && payload.new.updated_at ? new Date(payload.new.updated_at).getTime() : 0;
+        const localTs = DATA._syncedAt ? new Date(DATA._syncedAt).getTime() : 0;
+        if (payload.new && payload.new.data && remoteTs > localTs) {
           applyRemote(payload.new.data, payload.new.updated_at);
         }
       })

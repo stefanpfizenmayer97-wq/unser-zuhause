@@ -56,6 +56,7 @@ const SEED = {
   settings: { me: 'stefan', icsStefan: '', icsLinda: '', icsLast: '', notified: {} },
   notes: { stefan: '', linda: '' },
   notesAt: { stefan: '', linda: '' },
+  notesLiked: { stefan: false, linda: false },
   reads: { stefan: '', linda: '' },
   messages: [],
   tasks: [
@@ -188,12 +189,31 @@ function setPresence(iso, person, slot, val) {
   save();
 }
 
+/* ---------- Kochplan: Mittag & Abend pro Tag ---------- */
+function mealAt(iso, slot) {
+  const m = DATA.meals[iso];
+  if (!m) return null;
+  if (m.m || m.a) return m[slot] || null;
+  return slot === 'a' ? m : null; // alte Einträge zählen als Abendessen
+}
+function setMeal(iso, slot, entry) {
+  const cur = DATA.meals[iso];
+  const norm = cur ? (cur.m || cur.a ? { ...cur } : { a: cur }) : {};
+  if (entry) norm[slot] = entry; else delete norm[slot];
+  if (norm.m || norm.a) DATA.meals[iso] = norm;
+  else delete DATA.meals[iso];
+  save();
+}
+
 /* ---------- Kochplan: Vorschläge ---------- */
 function usedRecipeIds() {
   const used = new Set();
   for (let i = 0; i < 14; i++) {
-    const m = DATA.meals[toISO(addDays(new Date(), i))];
-    if (m && m.rid) used.add(m.rid);
+    const iso = toISO(addDays(new Date(), i));
+    for (const slot of ['m', 'a']) {
+      const e = mealAt(iso, slot);
+      if (e && e.rid) used.add(e.rid);
+    }
   }
   return used;
 }
@@ -281,7 +301,9 @@ function noteCleanup() {
     if (!DATA.notes[p]) continue;
     if (!DATA.notesAt[p]) { DATA.notesAt[p] = new Date().toISOString(); changed = true; }
     else if (Date.now() - new Date(DATA.notesAt[p]).getTime() > NOTE_DAYS * 864e5) {
-      DATA.notes[p] = ''; DATA.notesAt[p] = ''; changed = true;
+      DATA.notes[p] = ''; DATA.notesAt[p] = '';
+      if (DATA.notesLiked) DATA.notesLiked[p] = false;
+      changed = true;
     }
   }
   if (changed) save();

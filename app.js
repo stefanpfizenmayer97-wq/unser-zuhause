@@ -105,10 +105,16 @@ async function fillPushCard() {
        <button class="btn small full" data-action="push-on">${icon('bell', 16)} Benachrichtigungen einschalten</button>`;
 }
 function updateBadge() {
+  // Rote Zahl am App-Icon = nur ungelesene Nachrichten (nicht offene Aufgaben)
   if (navigator.setAppBadge) {
-    const n = openTasks().length + DATA.todos.filter(t => !t.done).length + unreadCount();
+    const n = unreadCount();
     n ? navigator.setAppBadge(n).catch(() => {}) : navigator.clearAppBadge().catch(() => {});
   }
+}
+
+/* Partner über eine Aktion informieren (Push, fire-and-forget) */
+function pingPartner(title, body) {
+  if (window.UZSync) UZSync.notifyPartner(title, body || '');
 }
 
 /* ---------- Home ---------- */
@@ -120,7 +126,7 @@ function renderHome() {
   const pn = DATA.notes[partner()];
   const mine = e => e.who === 'beide' || e.who === me(); // nur was mich (oder uns) betrifft
   const evToday = eventsOn(today).filter(mine);
-  const meal = DATA.meals[today];
+  const mealM = mealAt(today, 'm'), mealA = mealAt(today, 'a');
   const dueMine = openTasks().filter(t => taskWho(t) === me());
   const shopOpen = DATA.shopping.filter(i => !i.done).length;
   const next = nextEvents(10).filter(mine)[0];
@@ -145,10 +151,12 @@ function renderHome() {
   </div>`;
   const myNote = DATA.notes[me()];
   if (pn) {
+    const liked = DATA.notesLiked && DATA.notesLiked[partner()];
     html += `<div class="note-paper">
       <span class="pin">${heartPin}</span>
       <div class="note-from">Für dich, von ${esc(nameOf(partner()))}</div>
       <div class="note-text">${esc(pn)}</div>
+      <button class="notelike ${liked ? 'on' : ''}" data-action="note-like">♥${liked ? '' : ' liken'}</button>
     </div>`;
   }
   if (myNote) {
@@ -156,6 +164,7 @@ function renderHome() {
       <span class="tape"></span>
       <div class="note-from">Dein Zettel für ${esc(nameOf(partner()))}</div>
       <div class="note-text">${esc(myNote)}</div>
+      ${DATA.notesLiked && DATA.notesLiked[me()] ? '<div class="note-hint" style="text-align:left;color:#BC6A4A;font-weight:700">♥ Gefällt ' + esc(nameOf(partner())) + '</div>' : ''}
       <div class="note-hint">hängt noch ${noteDaysLeft(me())} Tage · tippen zum Ändern</div>
     </div>`;
   } else {
@@ -175,9 +184,13 @@ function renderHome() {
     anyToday = true;
     html += `<div class="row"><span class="ric">${icon(e.src === 'ics' ? 'case' : 'cal', 18)}</span><div class="grow"><div class="title">${esc(e.title)}</div><div class="meta">${e.time ? esc(e.time) + ' Uhr · ' : ''}${e.src === 'ics' ? 'Outlook · ' : ''}${e.who === 'beide' ? 'Wir beide' : esc(nameOf(e.who))}</div></div></div>`;
   }
-  if (meal) {
+  if (mealM) {
     anyToday = true;
-    html += `<div class="row" data-action="go-kueche"><span class="ric">${icon('pot', 18)}</span><div class="grow"><div class="title">${esc(mealName(meal))}</div><div class="meta">Heute Abend auf dem Kochplan</div></div></div>`;
+    html += `<div class="row" data-action="go-kueche"><span class="ric">${icon('pot', 18)}</span><div class="grow"><div class="title">${esc(mealName(mealM))}</div><div class="meta">Heute Mittag auf dem Kochplan</div></div></div>`;
+  }
+  if (mealA) {
+    anyToday = true;
+    html += `<div class="row" data-action="go-kueche"><span class="ric">${icon('pot', 18)}</span><div class="grow"><div class="title">${esc(mealName(mealA))}</div><div class="meta">Heute Abend auf dem Kochplan</div></div></div>`;
   }
   for (const t of dueMine.slice(0, 3)) {
     anyToday = true;
@@ -553,19 +566,19 @@ function renderMealplan() {
       const off = Math.round((startOfWeek(d) - startOfWeek(new Date())) / (7 * 864e5));
       html += `<h2 class="sect">${off === 0 ? 'Diese Woche' : off === 1 ? 'Nächste Woche' : 'Übernächste Woche'}</h2>`;
     }
-    const m = DATA.meals[iso];
-    const wegAbends = ['stefan', 'linda'].filter(p => !isPresent(iso, p, 'a'));
-    const hinweis = wegAbends.length === 2
-      ? '<span class="sm" style="color:var(--clay)">Beide abends unterwegs</span>'
-      : wegAbends.length === 1
-        ? '<span class="sm" style="color:var(--clay)">' + nameOf(wegAbends[0]) + ' ist abends nicht da</span>'
-        : '';
+    const weg = slot => ['stefan', 'linda'].filter(p => !isPresent(iso, p, slot));
+    const hint = w => w.length === 2
+      ? '<span class="sm" style="color:var(--clay)">beide unterwegs</span>'
+      : w.length === 1 ? '<span class="sm" style="color:var(--clay)">' + nameOf(w[0]) + ' nicht da</span>' : '';
+    const slotBtn = (slot, label) => {
+      const e = mealAt(iso, slot);
+      return `<button class="slot ${e ? 'filled' : ''}" data-action="meal-slot" data-iso="${iso}" data-slot="${slot}">
+        <span class="slotlbl">${label}</span>${e ? esc(mealName(e)) : '<span style="color:var(--muted)">–</span>'}${hint(weg(slot))}
+      </button>`;
+    };
     html += `<div class="mealday ${iso === today ? 'today' : ''}">
       <div class="d"><span class="w">${WD[(d.getDay() + 6) % 7]}</span><span class="n">${d.getDate()}</span></div>
-      <button class="slot ${m ? 'filled' : ''}" data-action="meal-slot" data-iso="${iso}">
-        ${m ? esc(mealName(m)) + (m.rid ? '<span class="sm">Rezept hinterlegt – antippen für Zutaten</span>' : '') : 'Was kochen wir?'}
-        ${hinweis}
-      </button>
+      <div class="slots">${slotBtn('m', 'Mittag')}${slotBtn('a', 'Abend')}</div>
     </div>`;
   }
   return html;
@@ -599,22 +612,24 @@ function openPresenceSheet() {
   `);
 }
 
-function openMealSheet(iso) {
-  const m = DATA.meals[iso];
+function openMealSheet(iso, slot) {
+  slot = slot || 'a';
+  const m = mealAt(iso, slot);
+  const lbl = slot === 'm' ? 'Mittagessen' : 'Abendessen';
   const recipeRows = DATA.recipes.map(r =>
-    `<div class="row" data-action="meal-set" data-iso="${iso}" data-rid="${r.id}">
+    `<div class="row" data-action="meal-set" data-iso="${iso}" data-slot="${slot}" data-rid="${r.id}">
       <span class="ric">${icon('pot', 18)}</span>
       <div class="grow"><div class="title">${esc(r.name)}</div><div class="meta">${r.ing.length} Zutaten</div></div>
     </div>`).join('');
   openSheet(`
-    <h2>${esc(fmtNice(iso))}</h2>
+    <h2>${esc(fmtNice(iso))} · ${lbl}</h2>
     ${m ? '<div class="card sand"><b>' + esc(mealName(m)) + '</b> ist eingeplant.</div>' : ''}
     ${m && m.rid ? '<button class="btn full" style="margin-bottom:8px" data-action="meal-shop" data-rid="' + m.rid + '">' + icon('cart', 16) + ' Zutaten auf die Einkaufsliste</button><button class="btn ghost small full" style="margin-bottom:8px" data-action="recipe-detail" data-id="' + m.rid + '">Rezept ansehen (einzelne Zutaten)</button>' : ''}
-    ${m ? '<button class="btn ghost small full" style="margin-bottom:14px" data-action="meal-clear" data-iso="' + iso + '">Eintrag entfernen</button>' : ''}
-    <button class="btn ghost small full" data-action="meal-roll" data-iso="${iso}">${icon('dice', 16)} Vorschlag würfeln</button>
-    <button class="btn ghost small full" style="margin-top:8px" data-action="ai-recipe-open" data-iso="${iso}">${icon('spark', 16)} Rezept mit KI erfinden</button>
+    ${m ? '<button class="btn ghost small full" style="margin-bottom:14px" data-action="meal-clear" data-iso="' + iso + '" data-slot="' + slot + '">Eintrag entfernen</button>' : ''}
+    <button class="btn ghost small full" data-action="meal-roll" data-iso="${iso}" data-slot="${slot}">${icon('dice', 16)} Vorschlag würfeln</button>
+    <button class="btn ghost small full" style="margin-top:8px" data-action="ai-recipe-open" data-iso="${iso}" data-slot="${slot}">${icon('spark', 16)} Rezept mit KI erfinden</button>
     <label class="f">Freitext (z. B. „Reste essen“, „Essen gehen“)</label>
-    <div class="addbar"><input class="f" id="mealText" placeholder="Gericht eintippen …"><button class="btn" data-action="meal-set-text" data-iso="${iso}">OK</button></div>
+    <div class="addbar"><input class="f" id="mealText" placeholder="Gericht eintippen …"><button class="btn" data-action="meal-set-text" data-iso="${iso}" data-slot="${slot}">OK</button></div>
     <label class="f">Oder ein Rezept wählen</label>
     ${recipeRows}
   `);
@@ -871,11 +886,22 @@ function handleAction(a, el) {
     case 'clear-note':
       DATA.notes[me()] = '';
       if (DATA.notesAt) DATA.notesAt[me()] = '';
+      if (DATA.notesLiked) DATA.notesLiked[me()] = false;
       save(); closeSheet(); render(); toast('Zettel abgenommen'); break;
+    case 'note-like': {
+      if (!DATA.notesLiked) DATA.notesLiked = { stefan: false, linda: false };
+      const author = partner();
+      DATA.notesLiked[author] = !DATA.notesLiked[author];
+      save(); render();
+      if (DATA.notesLiked[author]) pingPartner('♥ ' + nameOf(me()) + ' mag deinen Zettel', (DATA.notes[author] || '').slice(0, 100));
+      break;
+    }
     case 'save-note':
       DATA.notes[me()] = document.getElementById('noteText').value.trim();
       if (!DATA.notesAt) DATA.notesAt = { stefan: '', linda: '' };
       DATA.notesAt[me()] = DATA.notes[me()] ? new Date().toISOString() : '';
+      if (!DATA.notesLiked) DATA.notesLiked = { stefan: false, linda: false };
+      DATA.notesLiked[me()] = false; // neuer Zettel, neues Glück
       save(); closeSheet(); render(); toast('Angepinnt');
       if (DATA.notes[me()] && window.UZSync) {
         UZSync.notifyPartner(nameOf(me()) + ' hat dir einen Zettel an die Pinnwand gehängt', DATA.notes[me()].slice(0, 120));
@@ -899,14 +925,23 @@ function handleAction(a, el) {
     case 'del-task': DATA.tasks = DATA.tasks.filter(x => x.id !== id); save(); closeSheet(); render(); break;
     case 'todo-add': {
       const inp = document.getElementById('todoInput');
-      if (inp.value.trim()) { DATA.todos.push({ id: uid(), title: inp.value.trim(), who: 'beide', due: '', done: false }); save(); render(); }
+      if (inp.value.trim()) {
+        DATA.todos.push({ id: uid(), title: inp.value.trim(), who: 'beide', due: '', done: false });
+        save(); render();
+        pingPartner('Neues gemeinsames To-do', inp.value.trim());
+      }
       break;
     }
     case 'todo-toggle': { const t = DATA.todos.find(x => x.id === id); if (t) { t.done = !t.done; save(); render(); } break; }
     case 'todo-assign': openTodoSheet(id); break;
     case 'todo-set-who': {
       const t = DATA.todos.find(x => x.id === id);
-      if (t) { t.who = el.dataset.w; save(); openTodoSheet(id); }
+      if (t) {
+        const vorher = t.who || 'beide';
+        t.who = el.dataset.w;
+        save(); openTodoSheet(id);
+        if (t.who === partner() && vorher !== partner()) pingPartner('Ein To-do für dich', t.title);
+      }
       break;
     }
     case 'todo-save-due': {
@@ -946,7 +981,11 @@ function handleAction(a, el) {
       if (ev) Object.assign(ev, fields);
       else DATA.events.push({ id: uid(), ...fields });
       state.calSel = date;
-      save(); closeSheet(); render(); toast(ev ? 'Termin geändert' : 'Termin eingetragen'); break;
+      save(); closeSheet(); render(); toast(ev ? 'Termin geändert' : 'Termin eingetragen');
+      if (!ev && (fields.who === 'beide' || fields.who === partner())) {
+        pingPartner('Neuer Termin von ' + nameOf(me()), fields.title + ' · ' + fmtShort(date) + (fields.time ? ', ' + fields.time + ' Uhr' : ''));
+      }
+      break;
     }
     case 'del-event': DATA.events = DATA.events.filter(x => x.id !== id); save(); render(); break;
     case 'del-event-sheet': DATA.events = DATA.events.filter(x => x.id !== id); save(); closeSheet(); render(); toast('Termin gelöscht'); break;
@@ -959,32 +998,46 @@ function handleAction(a, el) {
       setPresence(el.dataset.iso, me(), el.dataset.slot, !isPresent(el.dataset.iso, me(), el.dataset.slot));
       openPresenceSheet();
       break;
-    case 'meal-slot': openMealSheet(el.dataset.iso); break;
-    case 'meal-set': DATA.meals[el.dataset.iso] = { rid: el.dataset.rid }; save(); closeSheet(); render(); break;
-    case 'meal-set-text': {
-      const v = document.getElementById('mealText').value.trim();
-      if (v) { DATA.meals[el.dataset.iso] = { name: v }; save(); closeSheet(); render(); }
+    case 'meal-slot': openMealSheet(el.dataset.iso, el.dataset.slot); break;
+    case 'meal-set': {
+      const slot = el.dataset.slot || 'a';
+      setMeal(el.dataset.iso, slot, { rid: el.dataset.rid });
+      closeSheet(); render();
+      pingPartner('Kochplan', mealName({ rid: el.dataset.rid }) + ' am ' + fmtShort(el.dataset.iso) + (slot === 'm' ? ' (mittags)' : ''));
       break;
     }
-    case 'meal-clear': delete DATA.meals[el.dataset.iso]; save(); closeSheet(); render(); break;
+    case 'meal-set-text': {
+      const v = document.getElementById('mealText').value.trim();
+      if (v) {
+        const slot = el.dataset.slot || 'a';
+        setMeal(el.dataset.iso, slot, { name: v });
+        closeSheet(); render();
+        pingPartner('Kochplan', v + ' am ' + fmtShort(el.dataset.iso) + (slot === 'm' ? ' (mittags)' : ''));
+      }
+      break;
+    }
+    case 'meal-clear': setMeal(el.dataset.iso, el.dataset.slot || 'a', null); closeSheet(); render(); break;
     case 'meal-roll': {
       const r = suggestRecipe();
       if (!r) { toast('Erst Rezepte anlegen'); break; }
-      DATA.meals[el.dataset.iso] = { rid: r.id };
-      save(); render(); openMealSheet(el.dataset.iso); toast('Vorschlag: ' + r.name);
+      const slot = el.dataset.slot || 'a';
+      setMeal(el.dataset.iso, slot, { rid: r.id });
+      render(); openMealSheet(el.dataset.iso, slot); toast('Vorschlag: ' + r.name);
+      pingPartner('Kochplan', r.name + ' am ' + fmtShort(el.dataset.iso) + (slot === 'm' ? ' (mittags)' : ''));
       break;
     }
     case 'meal-fill': {
       let filled = 0;
       for (let i = 0; i < 14; i++) {
         const iso = toISO(addDays(new Date(), i));
-        if (!DATA.meals[iso]) {
+        if (!mealAt(iso, 'a')) {
           const r = suggestRecipe();
-          if (r) { DATA.meals[iso] = { rid: r.id }; filled++; }
+          if (r) { setMeal(iso, 'a', { rid: r.id }); filled++; }
         }
       }
-      save(); render();
+      render();
       toast(filled ? filled + ' Tage vorgeschlagen – tausch aus, was nicht passt' : 'Alle Tage sind schon geplant');
+      if (filled) pingPartner('Kochplan', nameOf(me()) + ' hat ' + filled + ' Tage mit Vorschlägen geplant');
       break;
     }
     case 'meal-shop': {
@@ -1028,7 +1081,10 @@ function handleAction(a, el) {
       if (name) {
         const r = id ? DATA.recipes.find(x => x.id === id) : null;
         if (r) Object.assign(r, { name, ing, anleitung });
-        else DATA.recipes.push({ id: uid(), name, ing, anleitung });
+        else {
+          DATA.recipes.push({ id: uid(), name, ing, anleitung });
+          pingPartner('Neues Rezept von ' + nameOf(me()), name);
+        }
         save(); closeSheet(); render();
       }
       break;
@@ -1047,6 +1103,7 @@ function handleAction(a, el) {
     case 'del-recipe': DATA.recipes = DATA.recipes.filter(r => r.id !== id); save(); closeSheet(); render(); break;
     case 'ai-recipe-open':
       state._aiRecipeForDay = el.dataset.iso || null;
+      state._aiRecipeForSlot = el.dataset.slot || 'a';
       openSheet(`<h2>Rezept erfinden${state._aiRecipeForDay ? ' für ' + esc(fmtShort(state._aiRecipeForDay)) : ''}</h2>
         <label class="f">Worauf habt ihr Lust?</label>
         <input class="f" id="aiWish" placeholder="z. B. schnell &amp; vegetarisch, was mit Kürbis …">
@@ -1084,12 +1141,14 @@ function handleAction(a, el) {
         DATA.recipes.push({ id: newId, name: rec.name, ing: rec.ing || [], anleitung: rec.anleitung || '' });
         const day = state._aiRecipeForDay;
         if (day) {
-          DATA.meals[day] = { rid: newId };
+          setMeal(day, state._aiRecipeForSlot || 'a', { rid: newId });
           state._aiRecipeForDay = null;
           save(); closeSheet(); state.tab = 'kueche'; state.kueche = 'plan'; render();
           toast('Gespeichert & für ' + fmtShort(day) + ' eingeplant');
+          pingPartner('Kochplan', rec.name + ' am ' + fmtShort(day) + ' (neues Rezept)');
         } else {
           save(); closeSheet(); state.tab = 'kueche'; state.kueche = 'rezepte'; render(); toast('Rezept gespeichert');
+          pingPartner('Neues Rezept von ' + nameOf(me()), rec.name);
         }
       }
       break;
@@ -1183,7 +1242,9 @@ function handleAction(a, el) {
       if (!date) break;
       DATA.events.push({ id: uid(), title: 'Date-Night' + (idea ? ': ' + idea : ''), date, time, who: 'beide' });
       save(); closeSheet(); state.tab = 'kalender'; state.calSel = date; render();
-      toast('Date-Night steht!'); break;
+      toast('Date-Night steht!');
+      pingPartner('Date-Night geplant', (idea || 'Zeit zu zweit') + ' · ' + fmtShort(date) + (time ? ', ' + time + ' Uhr' : ''));
+      break;
     }
 
     /* Chat */
@@ -1267,10 +1328,11 @@ function handleAction(a, el) {
     case 'voice-add-meal': {
       const d = document.getElementById('vmDate').value, dish = document.getElementById('vmDish').value.trim();
       if (d && dish) {
-        DATA.meals[d] = { name: dish };
+        setMeal(d, 'a', { name: dish });
         (window._voiceMealItems || []).forEach(i => addShoppingItem(i));
         window._voiceMealItems = [];
         save(); closeSheet(); state.tab = 'kueche'; state.kueche = 'plan'; render(); toast('Eingeplant');
+        pingPartner('Kochplan', dish + ' am ' + fmtShort(d));
       }
       break;
     }
@@ -1292,6 +1354,8 @@ function handleAction(a, el) {
         DATA.notes[me()] = txt;
         if (!DATA.notesAt) DATA.notesAt = { stefan: '', linda: '' };
         DATA.notesAt[me()] = new Date().toISOString();
+        if (!DATA.notesLiked) DATA.notesLiked = { stefan: false, linda: false };
+        DATA.notesLiked[me()] = false;
         save();
         if (window.UZSync) UZSync.notifyPartner(nameOf(me()) + ' hat dir einen Zettel an die Pinnwand gehängt', txt.slice(0, 120));
         closeSheet(); state.tab = 'home'; render(); toast('Angepinnt');
@@ -1322,6 +1386,7 @@ function handleAction(a, el) {
       if (name) {
         DATA.recipes.push({ id: uid(), name, ing });
         save(); closeSheet(); state.tab = 'kueche'; state.kueche = 'rezepte'; render(); toast('Rezept gespeichert');
+        pingPartner('Neues Rezept von ' + nameOf(me()), name);
       }
       break;
     }
@@ -1340,7 +1405,8 @@ function handleAction(a, el) {
         const who = document.getElementById('vtWho').value;
         DATA.todos.push({ id: uid(), title, who, due: document.getElementById('vtDue').value, done: false });
         save(); closeSheet(); state.tab = 'haushalt'; render(); toast('To-do angelegt');
-        if (who === partner() && window.UZSync) UZSync.notifyPartner('Neues To-do für dich', title);
+        if (who === partner()) pingPartner('Neues To-do für dich', title);
+        else if (who === 'beide') pingPartner('Neues gemeinsames To-do', title);
       }
       break;
     }
