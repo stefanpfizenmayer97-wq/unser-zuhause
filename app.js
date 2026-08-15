@@ -434,16 +434,6 @@ function renderCalMonat() {
   }
   if (!anyWeek) html += `<div class="card"><div class="hint">In den nächsten 7 Tagen ist nichts eingetragen.</div></div>`;
 
-  html += `<h2 class="sect">Outlook-Kalender</h2>
-  <div class="card">
-    <div class="hint" style="margin-bottom:10px">Verknüpfe eure veröffentlichten Outlook-Kalender (ICS-Link) in den Einstellungen – oder importiere hier direkt eine .ics-Datei. Hinterlegte Links werden bei jedem App-Start automatisch aktualisiert.</div>
-    <div class="frow">
-      <label class="btn ghost small" style="cursor:pointer">Stefans .ics<input type="file" accept=".ics,text/calendar" id="icsFileStefan" hidden></label>
-      <label class="btn ghost small" style="cursor:pointer">Lindas .ics<input type="file" accept=".ics,text/calendar" id="icsFileLinda" hidden></label>
-    </div>
-    ${(DATA.settings.icsStefan || DATA.settings.icsLinda) ? '<button class="btn small full" style="margin-top:10px" data-action="ics-refresh">Outlook-Termine jetzt aktualisieren</button>' : ''}
-    ${DATA.icsEvents.length ? '<div class="mut" style="margin-top:8px">' + DATA.icsEvents.length + ' Outlook-Termine geladen' + (DATA.settings.icsLast ? ' · Stand ' + esc(DATA.settings.icsLast) : '') + '</div>' : ''}
-  </div>`;
   return html;
 }
 
@@ -517,6 +507,7 @@ function openMealSheet(iso) {
     ${m && m.rid ? '<button class="btn full" style="margin-bottom:8px" data-action="meal-shop" data-rid="' + m.rid + '">' + icon('cart', 16) + ' Zutaten auf die Einkaufsliste</button><button class="btn ghost small full" style="margin-bottom:8px" data-action="recipe-detail" data-id="' + m.rid + '">Rezept ansehen (einzelne Zutaten)</button>' : ''}
     ${m ? '<button class="btn ghost small full" style="margin-bottom:14px" data-action="meal-clear" data-iso="' + iso + '">Eintrag entfernen</button>' : ''}
     <button class="btn ghost small full" data-action="meal-roll" data-iso="${iso}">${icon('dice', 16)} Vorschlag würfeln</button>
+    <button class="btn ghost small full" style="margin-top:8px" data-action="ai-recipe-open" data-iso="${iso}">${icon('spark', 16)} Rezept mit KI erfinden</button>
     <label class="f">Freitext (z. B. „Reste essen“, „Essen gehen“)</label>
     <div class="addbar"><input class="f" id="mealText" placeholder="Gericht eintippen …"><button class="btn" data-action="meal-set-text" data-iso="${iso}">OK</button></div>
     <label class="f">Oder ein Rezept wählen</label>
@@ -723,7 +714,11 @@ function renderSettings() {
     <label class="f">Lindas ICS-Link</label>
     <input class="f" id="setIcsLinda" value="${esc(DATA.settings.icsLinda)}" placeholder="https://outlook.office365.com/…/calendar.ics">
     <button class="btn small full" style="margin-top:12px" data-action="save-ics">Speichern &amp; laden</button>
-    <div class="hint" style="margin-top:8px">Falls der Browser das Laden blockiert (CORS), nutze den .ics-Datei-Import im Kalender – oder wir schalten den Sync-Server dazwischen, sobald Supabase steht.</div>
+    <div class="frow" style="margin-top:8px">
+      <button class="btn ghost small" data-action="ics-refresh">Jetzt aktualisieren</button>
+      <label class="btn ghost small" style="cursor:pointer">Datei importieren<input type="file" accept=".ics,text/calendar" id="icsFileStefan" hidden></label>
+    </div>
+    <div class="hint" style="margin-top:8px">Aktualisiert sich automatisch bei jedem App-Start und alle 30 Minuten.${DATA.icsEvents.length ? ' Aktuell ' + DATA.icsEvents.length + ' Termine geladen' + (DATA.settings.icsLast ? ' · Stand ' + esc(DATA.settings.icsLast) : '') + '.' : ''}</div>
   </div>
 
   <h2 class="sect">Benachrichtigungen</h2>
@@ -907,7 +902,8 @@ function handleAction(a, el) {
     }
     case 'del-recipe': DATA.recipes = DATA.recipes.filter(r => r.id !== id); save(); closeSheet(); render(); break;
     case 'ai-recipe-open':
-      openSheet(`<h2>Rezept erfinden</h2>
+      state._aiRecipeForDay = el.dataset.iso || null;
+      openSheet(`<h2>Rezept erfinden${state._aiRecipeForDay ? ' für ' + esc(fmtShort(state._aiRecipeForDay)) : ''}</h2>
         <label class="f">Worauf habt ihr Lust?</label>
         <input class="f" id="aiWish" placeholder="z. B. schnell &amp; vegetarisch, was mit Kürbis …">
         <div style="margin-top:14px"><button class="btn full" data-action="ai-recipe-go">Vorschlag holen</button></div>
@@ -940,8 +936,17 @@ function handleAction(a, el) {
     case 'ai-recipe-save': {
       const rec = state._aiRecipe;
       if (rec && rec.name) {
-        DATA.recipes.push({ id: uid(), name: rec.name, ing: rec.ing || [] });
-        save(); closeSheet(); state.tab = 'kueche'; state.kueche = 'rezepte'; render(); toast('Rezept gespeichert');
+        const newId = uid();
+        DATA.recipes.push({ id: newId, name: rec.name, ing: rec.ing || [] });
+        const day = state._aiRecipeForDay;
+        if (day) {
+          DATA.meals[day] = { rid: newId };
+          state._aiRecipeForDay = null;
+          save(); closeSheet(); state.tab = 'kueche'; state.kueche = 'plan'; render();
+          toast('Gespeichert & für ' + fmtShort(day) + ' eingeplant');
+        } else {
+          save(); closeSheet(); state.tab = 'kueche'; state.kueche = 'rezepte'; render(); toast('Rezept gespeichert');
+        }
       }
       break;
     }
@@ -1281,12 +1286,7 @@ async function maybePushPrompt() {
   } catch (e) { console.warn('Push-Hinweis übersprungen:', e.message); }
 }
 
-/* Einmalige Aufräumaktion: bereits geladene Outlook-Feiertage entfernen */
-(() => {
-  const before = (DATA.icsEvents || []).length;
-  DATA.icsEvents = (DATA.icsEvents || []).filter(e => !/\bholiday\b|feiertag/i.test(e.title));
-  if (DATA.icsEvents.length !== before) save();
-})();
+if (cleanupHolidayIcs()) save();
 
 render();
 maybeNotify();

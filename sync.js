@@ -95,6 +95,7 @@ window.UZSync = (() => {
     DATA = remote;
     DATA.settings = DATA.settings || {};
     DATA.settings.me = meKeep;
+    if (typeof cleanupHolidayIcs === 'function') cleanupHolidayIcs();
     DATA._syncedAt = ts;
     localStorage.setItem(DB_KEY, JSON.stringify(DATA));
     if (typeof render === 'function') render();

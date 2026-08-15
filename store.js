@@ -235,6 +235,13 @@ function dailyQuote() {
   return QUOTES[doy % QUOTES.length];
 }
 
+/* ---------- Outlook-Feiertage rausfiltern (auch aus alten/gesyncten Daten) ---------- */
+function cleanupHolidayIcs() {
+  const before = (DATA.icsEvents || []).length;
+  DATA.icsEvents = (DATA.icsEvents || []).filter(e => !/\bholiday\b|feiertag/i.test(e.title));
+  return DATA.icsEvents.length !== before;
+}
+
 /* ---------- Pinnwand-Zettel: nach 7 Tagen von selbst abnehmen ---------- */
 const NOTE_DAYS = 7;
 function noteCleanup() {
