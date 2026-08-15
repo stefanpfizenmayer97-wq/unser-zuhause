@@ -296,8 +296,91 @@ function openTaskSheet(id) {
 }
 
 /* ---------- Kalender ---------- */
+const WHO_COLOR = w => w === 'linda' ? 'var(--clay)' : w === 'stefan' ? 'var(--olive)' : '#3E7C7B';
+
+function calLegend() {
+  return `<div class="legend">
+    <span><i class="dot stefan"></i>Stefan</span>
+    <span><i class="dot linda"></i>Linda</span>
+    <span><i class="dot beide"></i>Gemeinsam</span>
+    <span style="display:inline-flex;align-items:center;gap:4px">${icon('case', 13)} Outlook</span>
+  </div>`;
+}
+
+function calEvRow(e, compact) {
+  return `<div class="row" style="border-left:4px solid ${WHO_COLOR(e.who)};${compact ? 'padding:9px 12px;margin-bottom:6px' : ''}">
+    <span class="ric">${icon(e.src === 'ics' ? 'case' : 'cal', compact ? 16 : 18)}</span>
+    <div class="grow"><div class="title" ${compact ? 'style="font-size:14px"' : ''}>${esc(e.title)}</div>
+    <div class="meta">${e.time ? esc(e.time) + ' Uhr · ' : ''}${e.src === 'ics' ? 'Outlook-Termin' : 'eingetragen'} · ${e.who === 'beide' ? 'gemeinsam' : esc(nameOf(e.who))}</div></div>
+    ${whoChip(e.who)}
+    ${e.src !== 'ics' ? '<button class="check" data-action="del-event" data-id="' + e.id + '" style="border-color:#E0C4B8;color:#A54B32">' + icon('x', 13) + '</button>' : ''}
+  </div>`;
+}
+
 function renderKalender() {
   if (state.calY === null) { const n = new Date(); state.calY = n.getFullYear(); state.calM = n.getMonth(); }
+  if (!state.calView) state.calView = 'monat';
+
+  let html = `<div class="pagehead"><div><h1 class="page">Kalender</h1><div class="sub">Unser gemeinsamer Überblick</div></div>
+    <button class="iconbtn" data-action="add-event">${icon('plus', 19)}</button></div>
+  <div class="seg">
+    <button class="${state.calView === 'monat' ? 'active' : ''}" data-action="cal-view" data-v="monat">Monat</button>
+    <button class="${state.calView === 'woche' ? 'active' : ''}" data-action="cal-view" data-v="woche">Woche</button>
+    <button class="${state.calView === 'tag' ? 'active' : ''}" data-action="cal-view" data-v="tag">Tag</button>
+  </div>`;
+
+  if (state.calView === 'woche') return html + renderCalWoche();
+  if (state.calView === 'tag') return html + renderCalTag();
+  return html + renderCalMonat();
+}
+
+function renderCalWoche() {
+  const ws = startOfWeek(fromISO(state.calSel));
+  const we = addDays(ws, 6);
+  const today = todayISO();
+  let html = `<div class="calhead">
+    <button class="iconbtn" data-action="cal-prev">${icon('chevL', 18)}</button>
+    <div class="m">${ws.getDate()}.${ws.getMonth() + 1}. – ${we.getDate()}.${we.getMonth() + 1}.${we.getFullYear()}</div>
+    <button class="iconbtn" data-action="cal-next">${icon('chevR', 18)}</button>
+  </div>` + calLegend();
+  for (let i = 0; i < 7; i++) {
+    const d = addDays(ws, i);
+    const iso = toISO(d);
+    const evs = eventsOn(iso);
+    html += `<div class="dayblock ${iso === today ? 'today' : ''}">
+      <div class="dayhead" data-action="cal-day-tag" data-iso="${iso}">
+        <span>${WD_LONG[i]}, ${d.getDate()}. ${MONTHS[d.getMonth()]}</span>
+        ${iso === today ? '<span class="chip stefan" style="background:var(--olive);color:#fff">Heute</span>' : ''}
+      </div>
+      ${evs.length ? evs.map(e => calEvRow(e, true)).join('') : '<div class="noev">frei</div>'}
+    </div>`;
+  }
+  return html;
+}
+
+function renderCalTag() {
+  const iso = state.calSel;
+  const evs = eventsOn(iso);
+  let html = `<div class="calhead">
+    <button class="iconbtn" data-action="cal-prev">${icon('chevL', 18)}</button>
+    <div class="m" style="font-size:17px">${esc(fmtNice(iso))}</div>
+    <button class="iconbtn" data-action="cal-next">${icon('chevR', 18)}</button>
+  </div>` + calLegend();
+  if (evs.length) {
+    for (const e of evs) {
+      html += `<div class="tagrow">
+        <div class="ttime">${e.time ? esc(e.time) : 'ganz-<br>tägig'}</div>
+        <div class="grow">${calEvRow(e, false)}</div>
+      </div>`;
+    }
+  } else {
+    html += emptyState('cal', 'An diesem Tag ist nichts eingetragen.');
+  }
+  html += `<button class="btn ghost small full" style="margin-top:8px" data-action="add-event">${icon('plus', 15)} Termin an diesem Tag</button>`;
+  return html;
+}
+
+function renderCalMonat() {
   const y = state.calY, m = state.calM;
   const first = new Date(y, m, 1);
   const startPad = (first.getDay() + 6) % 7;
@@ -316,33 +399,17 @@ function renderKalender() {
   }
 
   const selEvs = eventsOn(state.calSel);
-  let html = `<div class="pagehead"><div><h1 class="page">Kalender</h1><div class="sub">Unser gemeinsamer Überblick</div></div>
-    <button class="iconbtn" data-action="add-event">${icon('plus', 19)}</button></div>
-  <div class="calhead">
+  let html = `<div class="calhead">
     <button class="iconbtn" data-action="cal-prev">${icon('chevL', 18)}</button>
     <div class="m">${MONTHS[m]} ${y}</div>
     <button class="iconbtn" data-action="cal-next">${icon('chevR', 18)}</button>
   </div>
   <div class="calgrid">${cells}</div>
-  <div class="legend">
-    <span><i class="dot stefan"></i>Stefan</span>
-    <span><i class="dot linda"></i>Linda</span>
-    <span><i class="dot beide"></i>Gemeinsam</span>
-    <span style="display:inline-flex;align-items:center;gap:4px">${icon('case', 13)} Outlook</span>
-  </div>
+  ${calLegend()}
   <h2 class="sect">${esc(fmtNice(state.calSel))}</h2>`;
 
-  const whoColor = w => w === 'linda' ? 'var(--clay)' : w === 'stefan' ? 'var(--olive)' : '#B98A3D';
   if (selEvs.length) {
-    for (const e of selEvs) {
-      html += `<div class="row" style="border-left:4px solid ${whoColor(e.who)}">
-        <span class="ric">${icon(e.src === 'ics' ? 'case' : 'cal', 18)}</span>
-        <div class="grow"><div class="title">${esc(e.title)}</div>
-        <div class="meta">${e.time ? esc(e.time) + ' Uhr · ' : ''}${e.src === 'ics' ? 'Outlook-Termin' : 'eingetragen'} · ${e.who === 'beide' ? 'gemeinsam' : esc(nameOf(e.who))}</div></div>
-        ${whoChip(e.who)}
-        ${e.src !== 'ics' ? '<button class="check" data-action="del-event" data-id="' + e.id + '" style="border-color:#E0C4B8;color:#A54B32">' + icon('x', 13) + '</button>' : ''}
-      </div>`;
-    }
+    html += selEvs.map(e => calEvRow(e, false)).join('');
   } else {
     html += emptyState('cal', 'Nichts eingetragen.');
   }
@@ -500,10 +567,10 @@ function openRecipeSheet(id) {
   if (!r) return;
   openSheet(`
     <h2>${esc(r.name)}</h2>
-    <div class="mut" style="margin-bottom:8px">Mit + landet eine einzelne Zutat auf der Einkaufsliste.</div>
-    ${r.ing.map(i => '<div class="row"><div class="grow"><div class="title" style="font-weight:500">' + esc(i) + '</div><div class="meta">' + esc(guessCat(i)) + '</div></div><button class="check" data-action="ing-add" data-name="' + esc(i) + '">' + icon('plus', 14) + '</button></div>').join('')}
+    <div class="mut" style="margin-bottom:8px">Abwählen, was ihr schon habt – dann übernehmen.</div>
+    ${r.ing.map(i => '<div class="row" data-ing-name="' + esc(i) + '"><button class="check on" data-action="ing-toggle">' + icon('check', 13) + '</button><div class="grow" data-action="ing-toggle-row"><div class="title" style="font-weight:500">' + esc(i) + '</div><div class="meta">' + esc(guessCat(i)) + '</div></div></div>').join('')}
     <div style="margin-top:12px;display:flex;flex-direction:column;gap:8px">
-      <button class="btn full" data-action="recipe-shop" data-id="${r.id}">${icon('cart', 16)} Alles auf die Einkaufsliste</button>
+      <button class="btn full" data-action="recipe-shop" data-id="${r.id}">${icon('cart', 16)} Ausgewählte auf die Einkaufsliste</button>
       <button class="btn danger full" data-action="del-recipe" data-id="${r.id}">Rezept löschen</button>
     </div>
   `);
@@ -729,9 +796,22 @@ function handleAction(a, el) {
     case 'todo-clear': DATA.todos = DATA.todos.filter(t => !t.done); save(); render(); break;
 
     /* Kalender */
-    case 'cal-prev': state.calM--; if (state.calM < 0) { state.calM = 11; state.calY--; } render(); break;
-    case 'cal-next': state.calM++; if (state.calM > 11) { state.calM = 0; state.calY++; } render(); break;
+    case 'cal-view': state.calView = el.dataset.v; render(); break;
+    case 'cal-prev': case 'cal-next': {
+      const dir = a === 'cal-next' ? 1 : -1;
+      if (state.calView === 'woche') {
+        state.calSel = toISO(addDays(fromISO(state.calSel), dir * 7));
+      } else if (state.calView === 'tag') {
+        state.calSel = toISO(addDays(fromISO(state.calSel), dir));
+      } else {
+        state.calM += dir;
+        if (state.calM < 0) { state.calM = 11; state.calY--; }
+        if (state.calM > 11) { state.calM = 0; state.calY++; }
+      }
+      render(); break;
+    }
     case 'cal-day': state.calSel = el.dataset.iso; render(); break;
+    case 'cal-day-tag': state.calSel = el.dataset.iso; state.calView = 'tag'; render(); break;
     case 'add-event': openEventSheet(state.calSel || todayISO()); break;
     case 'save-event': {
       const title = document.getElementById('evTitle').value.trim();
@@ -774,9 +854,25 @@ function handleAction(a, el) {
       toast(filled ? filled + ' Tage vorgeschlagen – tausch aus, was nicht passt' : 'Alle Tage sind schon geplant');
       break;
     }
-    case 'meal-shop': case 'recipe-shop': {
-      const r = DATA.recipes.find(x => x.id === (el.dataset.rid || id));
+    case 'meal-shop': {
+      const r = DATA.recipes.find(x => x.id === el.dataset.rid);
       if (r) { addRecipeToShopping(r); closeSheet(); toast('Zutaten auf der Liste'); render(); }
+      break;
+    }
+    case 'ing-toggle': el.classList.toggle('on'); break;
+    case 'ing-toggle-row': {
+      const c = el.parentElement.querySelector('.check');
+      if (c) c.classList.toggle('on');
+      break;
+    }
+    case 'recipe-shop': {
+      const rows = [...document.querySelectorAll('#sheet [data-ing-name]')];
+      const chosen = rows.filter(x => x.querySelector('.check.on')).map(x => x.dataset.ingName);
+      if (!chosen.length) { toast('Nichts ausgewählt'); break; }
+      let added = 0, dup = 0;
+      chosen.forEach(n => { addShoppingItem(n) === 'exists' ? dup++ : added++; });
+      closeSheet(); render();
+      toast(added + ' auf der Liste' + (dup ? ' · ' + dup + ' war(en) schon drauf' : ''));
       break;
     }
     case 'shop-add': {
@@ -786,11 +882,6 @@ function handleAction(a, el) {
         if (res === 'exists') toast('Steht schon auf der Liste');
         render(); document.getElementById('shopInput').focus();
       }
-      break;
-    }
-    case 'ing-add': {
-      const res = addShoppingItem(el.dataset.name);
-      toast(res === 'exists' ? '„' + el.dataset.name + '“ steht schon auf der Liste' : '„' + el.dataset.name + '“ ist auf der Liste');
       break;
     }
     case 'shop-toggle': { const i = DATA.shopping.find(x => x.id === id); if (i) { i.done = !i.done; save(); render(); } break; }
