@@ -63,6 +63,7 @@ function emptyState(ic, text) {
 /* ---------- Render ---------- */
 function render() {
   document.body.classList.toggle('chatmode', state.tab === 'chat');
+  if (state.tab === 'chat' && unreadCount() > 0) markChatRead(); // im offenen Chat gilt alles als gelesen
   document.querySelectorAll('#tabbar button').forEach(b => b.classList.toggle('active', b.dataset.tab === state.tab));
   const v = document.getElementById('view');
   const views = { home: renderHome, haushalt: renderHaushalt, kalender: renderKalender, kueche: renderKueche, uns: renderUns, chat: renderChat, settings: renderSettings };
@@ -105,7 +106,7 @@ async function fillPushCard() {
 }
 function updateBadge() {
   if (navigator.setAppBadge) {
-    const n = openTasks().length + DATA.todos.filter(t => !t.done).length;
+    const n = openTasks().length + DATA.todos.filter(t => !t.done).length + unreadCount();
     n ? navigator.setAppBadge(n).catch(() => {}) : navigator.clearAppBadge().catch(() => {});
   }
 }
@@ -130,7 +131,7 @@ function renderHome() {
       <div class="sub">${greet}, ${esc(nameOf(me()))} · ${esc(fmtNice(today))}</div>
     </div>
     <div class="headbtns">
-      <button class="iconbtn" data-action="open-chat" aria-label="Nachrichten">${icon('chat', 19)}</button>
+      <button class="iconbtn" data-action="open-chat" aria-label="Nachrichten" style="position:relative">${icon('chat', 19)}${unreadCount() ? '<span class="unread">' + unreadCount() + '</span>' : ''}</button>
       <button class="iconbtn" data-action="open-settings" aria-label="Einstellungen">${icon('gear', 19)}</button>
     </div>
   </div>`;
@@ -177,7 +178,8 @@ function renderHome() {
     ? `<div class="card sand"><div style="font-family:var(--serif);font-style:italic;font-size:17px">${esc(DATA.us.highlight)}</div></div>`
     : `<div class="card" data-action="edit-highlight"><div class="hint">Was war (oder wird) euer Highlight diese Woche? Tippen zum Eintragen.</div></div>`;
 
-  html += `<h2 class="sect">Nachrichten <span class="more" data-action="open-chat">alle ansehen</span></h2>`;
+  const un = unreadCount();
+  html += `<h2 class="sect">Nachrichten${un ? ' <span class="unread inline">' + un + ' neu</span>' : ''} <span class="more" data-action="open-chat">alle ansehen</span></h2>`;
   if (msgs.length) {
     for (const m of msgs) {
       html += `<div class="row" data-action="open-chat"><span class="ric">${icon('mail', 18)}</span><div class="grow"><div class="title" style="font-weight:500">${esc(m.text)}</div><div class="meta">${esc(nameOf(m.from))}</div></div></div>`;
@@ -275,7 +277,7 @@ function renderKalender() {
     const d = addDays(gridStart, i);
     const iso = toISO(d);
     const evs = eventsOn(iso);
-    const dots = evs.slice(0, 3).map(e => `<span class="dot ${e.who === 'linda' ? 'linda' : e.who === 'stefan' ? 'stefan' : ''}"></span>`).join('');
+    const dots = evs.slice(0, 3).map(e => `<span class="dot ${e.who === 'linda' ? 'linda' : e.who === 'stefan' ? 'stefan' : 'beide'}"></span>`).join('');
     cells += `<button class="day ${d.getMonth() !== m ? 'dim' : ''} ${iso === today ? 'today' : ''} ${iso === state.calSel ? 'sel' : ''}" data-action="cal-day" data-iso="${iso}">
       <span>${d.getDate()}</span><span class="dots">${dots}</span></button>`;
   }
@@ -289,14 +291,21 @@ function renderKalender() {
     <button class="iconbtn" data-action="cal-next">${icon('chevR', 18)}</button>
   </div>
   <div class="calgrid">${cells}</div>
+  <div class="legend">
+    <span><i class="dot stefan"></i>Stefan</span>
+    <span><i class="dot linda"></i>Linda</span>
+    <span><i class="dot beide"></i>Gemeinsam</span>
+    <span style="display:inline-flex;align-items:center;gap:4px">${icon('case', 13)} Outlook</span>
+  </div>
   <h2 class="sect">${esc(fmtNice(state.calSel))}</h2>`;
 
+  const whoColor = w => w === 'linda' ? 'var(--clay)' : w === 'stefan' ? 'var(--olive)' : '#B98A3D';
   if (selEvs.length) {
     for (const e of selEvs) {
-      html += `<div class="row">
+      html += `<div class="row" style="border-left:4px solid ${whoColor(e.who)}">
         <span class="ric">${icon(e.src === 'ics' ? 'case' : 'cal', 18)}</span>
         <div class="grow"><div class="title">${esc(e.title)}</div>
-        <div class="meta">${e.time ? esc(e.time) + ' Uhr · ' : ''}${e.src === 'ics' ? 'Outlook' : 'eingetragen'}</div></div>
+        <div class="meta">${e.time ? esc(e.time) + ' Uhr · ' : ''}${e.src === 'ics' ? 'Outlook-Termin' : 'eingetragen'} · ${e.who === 'beide' ? 'gemeinsam' : esc(nameOf(e.who))}</div></div>
         ${whoChip(e.who)}
         ${e.src !== 'ics' ? '<button class="check" data-action="del-event" data-id="' + e.id + '" style="border-color:#E0C4B8;color:#A54B32">' + icon('x', 13) + '</button>' : ''}
       </div>`;
@@ -304,6 +313,24 @@ function renderKalender() {
   } else {
     html += emptyState('cal', 'Nichts eingetragen.');
   }
+
+  // Kleine Wochen-Vorschau ab dem gewählten Tag
+  html += `<h2 class="sect">Die nächsten 7 Tage</h2>`;
+  let anyWeek = false;
+  for (let i = 1; i <= 7; i++) {
+    const d = addDays(fromISO(state.calSel), i);
+    const iso = toISO(d);
+    const evs = eventsOn(iso);
+    if (!evs.length) continue;
+    anyWeek = true;
+    html += `<div class="weekrow" data-action="cal-day" data-iso="${iso}">
+      <div class="wd2">${WD[(d.getDay() + 6) % 7]}<br><b>${d.getDate()}.</b></div>
+      <div class="wevs">${evs.map(e =>
+        `<div class="wev"><i class="dot ${e.who === 'linda' ? 'linda' : e.who === 'stefan' ? 'stefan' : 'beide'}"></i>${e.time ? '<b>' + esc(e.time) + '</b> ' : ''}${esc(e.title)}${e.src === 'ics' ? ' <span class="mut">· Outlook</span>' : ''}</div>`
+      ).join('')}</div>
+    </div>`;
+  }
+  if (!anyWeek) html += `<div class="card"><div class="hint">In den nächsten 7 Tagen ist nichts eingetragen.</div></div>`;
 
   html += `<h2 class="sect">Outlook-Kalender</h2>
   <div class="card">
@@ -385,7 +412,7 @@ function openMealSheet(iso) {
   openSheet(`
     <h2>${esc(fmtNice(iso))}</h2>
     ${m ? '<div class="card sand"><b>' + esc(mealName(m)) + '</b> ist eingeplant.</div>' : ''}
-    ${m && m.rid ? '<button class="btn full" style="margin-bottom:8px" data-action="meal-shop" data-rid="' + m.rid + '">' + icon('cart', 16) + ' Zutaten auf die Einkaufsliste</button>' : ''}
+    ${m && m.rid ? '<button class="btn full" style="margin-bottom:8px" data-action="meal-shop" data-rid="' + m.rid + '">' + icon('cart', 16) + ' Zutaten auf die Einkaufsliste</button><button class="btn ghost small full" style="margin-bottom:8px" data-action="recipe-detail" data-id="' + m.rid + '">Rezept ansehen (einzelne Zutaten)</button>' : ''}
     ${m ? '<button class="btn ghost small full" style="margin-bottom:14px" data-action="meal-clear" data-iso="' + iso + '">Eintrag entfernen</button>' : ''}
     <button class="btn ghost small full" data-action="meal-roll" data-iso="${iso}">${icon('dice', 16)} Vorschlag würfeln</button>
     <label class="f">Freitext (z. B. „Reste essen“, „Essen gehen“)</label>
@@ -425,8 +452,9 @@ function renderRecipes() {
     <button class="btn ghost full" data-action="add-recipe">${icon('plus', 16)} Neues Rezept</button>
     <button class="btn full" data-action="ai-recipe-open">${icon('spark', 16)} Rezept mit KI erfinden</button>
   </div>`;
+  html += `<input class="f" id="recipeSearch" placeholder="Rezepte durchsuchen (Name oder Zutat) …" style="margin-bottom:10px" autocomplete="off">`;
   for (const r of DATA.recipes) {
-    html += `<div class="row" data-action="recipe-detail" data-id="${r.id}">
+    html += `<div class="row" data-action="recipe-detail" data-id="${r.id}" data-recipe-row data-search="${esc((r.name + ' ' + r.ing.join(' ')).toLowerCase())}">
       <span class="ric">${icon('pot', 18)}</span>
       <div class="grow"><div class="title">${esc(r.name)}</div><div class="meta">${r.ing.length} Zutaten</div></div>
       <span class="chip ghost">ansehen</span>
@@ -439,7 +467,8 @@ function openRecipeSheet(id) {
   if (!r) return;
   openSheet(`
     <h2>${esc(r.name)}</h2>
-    ${r.ing.map(i => '<div class="row"><div class="grow"><div class="title" style="font-weight:500">' + esc(i) + '</div><div class="meta">' + esc(guessCat(i)) + '</div></div></div>').join('')}
+    <div class="mut" style="margin-bottom:8px">Mit + landet eine einzelne Zutat auf der Einkaufsliste.</div>
+    ${r.ing.map(i => '<div class="row"><div class="grow"><div class="title" style="font-weight:500">' + esc(i) + '</div><div class="meta">' + esc(guessCat(i)) + '</div></div><button class="check" data-action="ing-add" data-name="' + esc(i) + '">' + icon('plus', 14) + '</button></div>').join('')}
     <div style="margin-top:12px;display:flex;flex-direction:column;gap:8px">
       <button class="btn full" data-action="recipe-shop" data-id="${r.id}">${icon('cart', 16)} Alles auf die Einkaufsliste</button>
       <button class="btn danger full" data-action="del-recipe" data-id="${r.id}">Rezept löschen</button>
@@ -613,7 +642,7 @@ function handleAction(a, el) {
   switch (a) {
     /* Navigation */
     case 'open-settings': state.tab = 'settings'; render(); break;
-    case 'open-chat': state.tab = 'chat'; render(); requestAnimationFrame(() => window.scrollTo(0, document.body.scrollHeight)); break;
+    case 'open-chat': state.tab = 'chat'; markChatRead(); render(); requestAnimationFrame(() => window.scrollTo(0, document.body.scrollHeight)); break;
     case 'go-haushalt': state.tab = 'haushalt'; render(); break;
     case 'go-kalender': state.tab = 'kalender'; render(); break;
     case 'go-kueche': state.tab = 'kueche'; state.kueche = 'plan'; render(); break;
@@ -718,7 +747,16 @@ function handleAction(a, el) {
     }
     case 'shop-add': {
       const inp = document.getElementById('shopInput');
-      if (inp.value.trim()) { addShoppingItem(inp.value); render(); document.getElementById('shopInput').focus(); }
+      if (inp.value.trim()) {
+        const res = addShoppingItem(inp.value);
+        if (res === 'exists') toast('Steht schon auf der Liste');
+        render(); document.getElementById('shopInput').focus();
+      }
+      break;
+    }
+    case 'ing-add': {
+      const res = addShoppingItem(el.dataset.name);
+      toast(res === 'exists' ? '„' + el.dataset.name + '“ steht schon auf der Liste' : '„' + el.dataset.name + '“ ist auf der Liste');
       break;
     }
     case 'shop-toggle': { const i = DATA.shopping.find(x => x.id === id); if (i) { i.done = !i.done; save(); render(); } break; }
@@ -903,7 +941,21 @@ function handleAction(a, el) {
     }
     case 'voice-add-meal': {
       const d = document.getElementById('vmDate').value, dish = document.getElementById('vmDish').value.trim();
-      if (d && dish) { DATA.meals[d] = { name: dish }; save(); closeSheet(); state.tab = 'kueche'; state.kueche = 'plan'; render(); toast('Eingeplant'); }
+      if (d && dish) {
+        DATA.meals[d] = { name: dish };
+        (window._voiceMealItems || []).forEach(i => addShoppingItem(i));
+        window._voiceMealItems = [];
+        save(); closeSheet(); state.tab = 'kueche'; state.kueche = 'plan'; render(); toast('Eingeplant');
+      }
+      break;
+    }
+    case 'voice-add-recipe': {
+      const name = document.getElementById('vrName').value.trim();
+      const ing = document.getElementById('vrIng').value.split('\n').map(s => s.trim()).filter(Boolean);
+      if (name) {
+        DATA.recipes.push({ id: uid(), name, ing });
+        save(); closeSheet(); state.tab = 'kueche'; state.kueche = 'rezepte'; render(); toast('Rezept gespeichert');
+      }
       break;
     }
     case 'voice-add-event': {
@@ -980,6 +1032,14 @@ document.addEventListener('keydown', e => {
   const map = { shopInput: 'shop-add', chatInput: 'chat-send', todoInput: 'todo-add', ideaInput: 'idea-add', bucketInput: 'bucket-add' };
   const act = map[e.target.id];
   if (act) { e.preventDefault(); handleAction(act, e.target); }
+});
+document.addEventListener('input', e => {
+  if (e.target.id === 'recipeSearch') {
+    const q = e.target.value.toLowerCase().trim();
+    document.querySelectorAll('[data-recipe-row]').forEach(r => {
+      r.style.display = !q || r.dataset.search.includes(q) ? '' : 'none';
+    });
+  }
 });
 document.addEventListener('change', e => {
   if (e.target.id === 'icsFileStefan' || e.target.id === 'icsFileLinda') {

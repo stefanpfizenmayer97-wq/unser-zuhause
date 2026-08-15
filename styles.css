@@ -328,6 +328,32 @@ hr.soft { border: none; border-top: 1px solid var(--line); margin: 16px 0; }
 .empty .eicon { display: flex; justify-content: center; margin-bottom: 10px; color: var(--sand-deep); }
 .check svg { display: block; }
 
+/* ---------- Ungelesen-Badge ---------- */
+.unread {
+  position: absolute; top: -5px; right: -5px;
+  background: #C0392B; color: #fff;
+  font-size: 11px; font-weight: 800;
+  min-width: 18px; height: 18px; border-radius: 999px;
+  display: inline-flex; align-items: center; justify-content: center;
+  padding: 0 5px; line-height: 1;
+}
+.unread.inline { position: static; vertical-align: 2px; margin-left: 4px; font-size: 11px; padding: 2px 8px; height: auto; }
+
+/* ---------- Kalender: Legende & Wochenvorschau ---------- */
+.legend { display: flex; gap: 14px; flex-wrap: wrap; align-items: center; margin: 10px 2px 0; font-size: 12px; color: var(--muted); }
+.legend .dot { display: inline-block; width: 8px; height: 8px; margin-right: 5px; }
+.dot.beide { background: #B98A3D; }
+.chip.beide { background: #EFE2C6; color: #7A5A1F; }
+.weekrow {
+  display: flex; gap: 12px; align-items: flex-start;
+  background: var(--card); border: 1px solid var(--line);
+  border-radius: 15px; padding: 10px 13px; margin-bottom: 8px;
+}
+.weekrow .wd2 { flex: none; width: 36px; text-align: center; font-size: 11px; color: var(--muted); line-height: 1.25; padding-top: 2px; }
+.weekrow .wd2 b { font-size: 16px; color: var(--olive-deep); }
+.weekrow .wevs { flex: 1; display: flex; flex-direction: column; gap: 5px; font-size: 13.5px; min-width: 0; }
+.weekrow .wev .dot { display: inline-block; margin-right: 6px; }
+
 /* ---------- Login (Sync) ---------- */
 #loginWrap {
   position: fixed; inset: 0; z-index: 100;

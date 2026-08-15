@@ -55,6 +55,7 @@ function daysUntil(iso) {
 const SEED = {
   settings: { me: 'stefan', icsStefan: '', icsLinda: '', icsLast: '', notified: {} },
   notes: { stefan: '', linda: '' },
+  reads: { stefan: '', linda: '' },
   messages: [],
   tasks: [
     { id: 't1', title: 'Müll rausbringen', freq: 'weekly', rotation: ['stefan', 'linda'], turn: 0, doneKey: null },
@@ -173,14 +174,32 @@ function suggestRecipe() {
   return list[Math.floor(Math.random() * list.length)];
 }
 
+/* ---------- Ungelesene Nachrichten ---------- */
+function unreadCount() {
+  const since = (DATA.reads && DATA.reads[me()]) || '';
+  return DATA.messages.filter(m => m.from === partner() && m.at && m.at > since).length;
+}
+function markChatRead() {
+  if (!DATA.reads) DATA.reads = { stefan: '', linda: '' };
+  if (unreadCount() > 0 || !DATA.reads[me()]) {
+    DATA.reads[me()] = new Date().toISOString();
+    save();
+  }
+}
+
 /* ---------- Einkauf ---------- */
 function addShoppingItem(name, by) {
   const clean = name.trim();
-  if (!clean) return;
-  const exists = DATA.shopping.some(i => !i.done && i.name.toLowerCase() === clean.toLowerCase());
-  if (exists) return;
+  if (!clean) return 'empty';
+  // Steht schon offen auf der Liste? Nicht doppelt eintragen.
+  const open = DATA.shopping.find(i => !i.done && i.name.toLowerCase() === clean.toLowerCase());
+  if (open) return 'exists';
+  // War schon mal drauf und ist abgehakt? Wieder aktivieren statt doppeln.
+  const done = DATA.shopping.find(i => i.done && i.name.toLowerCase() === clean.toLowerCase());
+  if (done) { done.done = false; save(); return 'added'; }
   DATA.shopping.push({ id: uid(), name: clean, cat: guessCat(clean), done: false, by: by || me() });
   save();
+  return 'added';
 }
 function addRecipeToShopping(recipe) {
   for (const ing of recipe.ing) addShoppingItem(ing);

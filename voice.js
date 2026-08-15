@@ -155,7 +155,8 @@ async function understandVoice(text) {
       const r = await UZSync.invoke('ai', { mode: 'parse', text, today: todayISO() });
       const a = r.action || {};
       if (a.kind === 'shopping' && (a.items || []).length) return confirmVoice({ kind: 'shopping', items: a.items });
-      if (a.kind === 'meal' && a.dish) return confirmVoice({ kind: 'meal', date: a.date || todayISO(), dish: a.dish });
+      if (a.kind === 'recipe' && a.title) return confirmVoice({ kind: 'recipe', name: a.title, ing: a.items || [] });
+      if (a.kind === 'meal' && a.dish) return confirmVoice({ kind: 'meal', date: a.date || todayISO(), dish: a.dish, items: a.items || [] });
       if (a.kind === 'event' && a.title) return confirmVoice({ kind: 'event', date: a.date || todayISO(), time: a.time || '', title: a.title, who: a.who || 'beide' });
       if (a.kind === 'todo' && a.title) return confirmVoice({ kind: 'todo', title: a.title, who: a.who || 'beide', due: a.date || '' });
     } catch (e) {
@@ -187,13 +188,25 @@ function confirmVoice(p) {
       ${p.items.map(i => `<div class="row"><div class="grow"><div class="title">${esc(i)}</div><div class="meta">${esc(guessCat(i))}</div></div></div>`).join('')}
       <button class="btn full" data-action="voice-add-shopping" data-items="${esc(JSON.stringify(p.items))}">Ja, eintragen</button>
     `);
+  } else if (p.kind === 'recipe') {
+    window._aiRecipeFromVoice = { name: p.name, ing: p.ing };
+    openSheet(`
+      <h2>Neues Rezept anlegen?</h2>
+      <label class="f">Name</label>
+      <input class="f" id="vrName" value="${esc(p.name)}">
+      <label class="f">Zutaten (eine pro Zeile)</label>
+      <textarea class="f" id="vrIng">${esc(p.ing.join('\n'))}</textarea>
+      <div style="margin-top:14px"><button class="btn full" data-action="voice-add-recipe">Rezept speichern</button></div>
+    `);
   } else if (p.kind === 'meal') {
+    window._voiceMealItems = p.items || [];
     openSheet(`
       <h2>In den Kochplan?</h2>
       <label class="f">Gericht</label>
       <input class="f" id="vmDish" value="${esc(p.dish)}">
       <label class="f">Datum</label>
       <input class="f" id="vmDate" type="date" value="${p.date}">
+      ${(p.items && p.items.length) ? '<div class="mut" style="margin-top:8px">Außerdem auf die Einkaufsliste: ' + esc(p.items.join(', ')) + '</div>' : ''}
       <div style="margin-top:14px"><button class="btn full" data-action="voice-add-meal">Eintragen</button></div>
     `);
   } else if (p.kind === 'event') {
