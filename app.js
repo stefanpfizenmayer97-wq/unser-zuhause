@@ -691,7 +691,6 @@ function nextFriday() {
 }
 function openDateNightSheet(preIdx) {
   const ideas = DATA.us.ideas.map((x, i) => '<option value="' + i + '"' + (i === preIdx ? ' selected' : '') + '>' + esc(x) + '</option>').join('');
-  const recipes = DATA.recipes.map(r => '<option value="' + r.id + '">' + esc(r.name) + '</option>').join('');
   openSheet(`
     <h2>Date-Night planen</h2>
     <div class="frow">
@@ -700,10 +699,8 @@ function openDateNightSheet(preIdx) {
     </div>
     <label class="f">Programm</label>
     <select class="f" id="dnIdea"><option value="-1">Einfach Zeit zu zweit</option>${ideas}</select>
-    <label class="f">Zusammen kochen?</label>
-    <select class="f" id="dnRecipe"><option value="">Ohne Kochplan-Eintrag</option>${recipes}</select>
     <div class="mut" style="margin-top:8px">Tipp: Handys weg, Kerzen an.</div>
-    <div style="margin-top:14px"><button class="btn full" data-action="save-datenight">Eintragen</button></div>
+    <div style="margin-top:14px"><button class="btn full" data-action="save-datenight">In den Kalender</button></div>
   `);
 }
 
@@ -1118,11 +1115,9 @@ function handleAction(a, el) {
       const date = document.getElementById('dnDate').value;
       const time = document.getElementById('dnTime').value;
       const ideaI = +document.getElementById('dnIdea').value;
-      const rid = document.getElementById('dnRecipe').value;
       const idea = ideaI >= 0 ? DATA.us.ideas[ideaI] : '';
       if (!date) break;
       DATA.events.push({ id: uid(), title: 'Date-Night' + (idea ? ': ' + idea : ''), date, time, who: 'beide' });
-      if (rid) DATA.meals[date] = { rid };
       save(); closeSheet(); state.tab = 'kalender'; state.calSel = date; render();
       toast('Date-Night steht!'); break;
     }
