@@ -226,6 +226,37 @@ function taskMini(t) {
   </div>`;
 }
 
+function todoMini(t) {
+  return `<div class="task-mini ${t.done ? 'done' : ''}">
+    <button class="check ${t.done ? 'on' : ''}" data-action="todo-toggle" data-id="${t.id}">${icon('check', 13)}</button>
+    <div class="grow" data-action="todo-assign" data-id="${t.id}">
+      <div class="title">${esc(t.title)}</div>
+      <div class="meta">einmalig${t.due ? ' · bis ' + esc(fmtShort(t.due)) : ''}</div>
+    </div>
+  </div>`;
+}
+
+function openTodoSheet(id) {
+  const t = DATA.todos.find(x => x.id === id);
+  if (!t) return;
+  const w = t.who || 'beide';
+  openSheet(`
+    <h2>${esc(t.title)}</h2>
+    <label class="f">Wer soll's machen?</label>
+    <div class="frow">
+      <button class="btn ${w === 'stefan' ? '' : 'ghost'}" data-action="todo-set-who" data-id="${t.id}" data-w="stefan">Stefan</button>
+      <button class="btn ${w === 'linda' ? '' : 'ghost'}" data-action="todo-set-who" data-id="${t.id}" data-w="linda">Linda</button>
+      <button class="btn ${w === 'beide' ? '' : 'ghost'}" data-action="todo-set-who" data-id="${t.id}" data-w="beide">Beide</button>
+    </div>
+    <label class="f">Bis wann? (optional)</label>
+    <input class="f" type="date" id="tdDue" value="${esc(t.due || '')}">
+    <div style="margin-top:14px;display:flex;gap:8px">
+      <button class="btn danger small" data-action="todo-del" data-id="${t.id}">Löschen</button>
+      <button class="btn" style="flex:1" data-action="todo-save-due" data-id="${t.id}">Fertig</button>
+    </div>
+  `);
+}
+
 function renderHaushalt() {
   const open = DATA.tasks.filter(t => !taskIsDone(t));
   const done = DATA.tasks.filter(t => taskIsDone(t));
@@ -233,17 +264,18 @@ function renderHaushalt() {
     <button class="iconbtn" data-action="add-task">${icon('plus', 19)}</button></div>`;
 
   html += `<h2 class="sect">Jetzt fällig</h2>`;
-  if (open.length) {
+  const tdOf = p => DATA.todos.filter(t => !t.done && (t.who || 'beide') === p);
+  if (open.length || tdOf('stefan').length || tdOf('linda').length) {
     const st = open.filter(t => taskWho(t) === 'stefan');
     const li = open.filter(t => taskWho(t) === 'linda');
     html += `<div class="duo">
       <div>
         <div class="colhead stefan">Stefan</div>
-        ${st.map(taskMini).join('') || '<div class="hint" style="padding:4px 2px">Nichts offen – stark!</div>'}
+        ${st.map(taskMini).join('') + tdOf('stefan').map(todoMini).join('') || '<div class="hint" style="padding:4px 2px">Nichts offen – stark!</div>'}
       </div>
       <div>
         <div class="colhead linda">Linda</div>
-        ${li.map(taskMini).join('') || '<div class="hint" style="padding:4px 2px">Nichts offen – stark!</div>'}
+        ${li.map(taskMini).join('') + tdOf('linda').map(todoMini).join('') || '<div class="hint" style="padding:4px 2px">Nichts offen – stark!</div>'}
       </div>
     </div>`;
   } else {
@@ -254,19 +286,28 @@ function renderHaushalt() {
     html += `<h2 class="sect">Schon erledigt</h2>` + done.map(taskRow).join('');
   }
 
-  html += `<h2 class="sect">Einmalige To-dos</h2>
+  html += `<h2 class="sect">Gemeinsame To-dos</h2>
   <div class="addbar"><input class="f" id="todoInput" placeholder="Neues To-do …"><button class="btn" data-action="todo-add">${icon('plus', 17)}</button></div>
-  ${DATA.todos.length ? '<div class="mut" style="margin:2px 2px 8px">Tipp: aufs Namens-Kärtchen tippen, um das To-do Stefan, Linda oder beiden zuzuweisen.</div>' : ''}`;
-  const todos = DATA.todos.slice().sort((a, b) => (a.done === b.done) ? 0 : a.done ? 1 : -1);
-  for (const t of todos) {
-    const w = t.who || 'beide';
-    html += `<div class="row ${t.done ? 'done' : ''}">
-      <button class="check ${t.done ? 'on' : ''}" data-action="todo-toggle" data-id="${t.id}">${icon('check', 15)}</button>
-      <div class="grow"><div class="title">${esc(t.title)}</div><div class="meta">${t.due ? 'bis ' + esc(fmtShort(t.due)) : ''}</div></div>
-      <span class="chip ${esc(w)}" data-action="todo-who" data-id="${t.id}" style="cursor:pointer">${w === 'beide' ? 'Beide' : esc(nameOf(w))}</span>
+  <div class="mut" style="margin:2px 2px 8px">Neue To-dos landen hier – antippen, um sie Stefan oder Linda zuzuschieben.</div>`;
+  for (const t of DATA.todos.filter(t => !t.done && (t.who || 'beide') === 'beide')) {
+    html += `<div class="row">
+      <button class="check" data-action="todo-toggle" data-id="${t.id}">${icon('check', 15)}</button>
+      <div class="grow" data-action="todo-assign" data-id="${t.id}"><div class="title">${esc(t.title)}</div><div class="meta">${t.due ? 'bis ' + esc(fmtShort(t.due)) : 'gemeinsam'}</div></div>
+      <span class="chip beide" data-action="todo-assign" data-id="${t.id}" style="cursor:pointer">Beide</span>
     </div>`;
   }
-  if (DATA.todos.some(t => t.done)) html += `<button class="btn ghost small" data-action="todo-clear">Erledigte entfernen</button>`;
+  const doneTodos = DATA.todos.filter(t => t.done);
+  if (doneTodos.length) {
+    html += `<div class="cathead">Erledigt</div>`;
+    for (const t of doneTodos) {
+      html += `<div class="row done">
+        <button class="check on" data-action="todo-toggle" data-id="${t.id}">${icon('check', 15)}</button>
+        <div class="grow"><div class="title">${esc(t.title)}</div></div>
+        ${whoChip(t.who || 'beide')}
+      </div>`;
+    }
+    html += `<button class="btn ghost small" data-action="todo-clear">Erledigte entfernen</button>`;
+  }
   return html;
 }
 
@@ -313,7 +354,7 @@ function calLegend() {
 function calEvRow(e, compact) {
   return `<div class="row" style="border-left:4px solid ${WHO_COLOR(e.who)};${compact ? 'padding:9px 12px;margin-bottom:6px' : ''}">
     <span class="ric">${icon(e.src === 'ics' ? 'case' : 'cal', compact ? 16 : 18)}</span>
-    <div class="grow"><div class="title" ${compact ? 'style="font-size:14px"' : ''}>${esc(e.title)}</div>
+    <div class="grow" ${e.src !== 'ics' ? 'data-action="edit-event" data-id="' + e.id + '"' : ''}><div class="title" ${compact ? 'style="font-size:14px"' : ''}>${esc(e.title)}</div>
     <div class="meta">${e.time ? esc(e.time) + ' Uhr · ' : ''}${e.src === 'ics' ? 'Outlook-Termin' : 'eingetragen'} · ${e.who === 'beide' ? 'gemeinsam' : esc(nameOf(e.who))}</div></div>
     ${whoChip(e.who)}
     ${e.src !== 'ics' ? '<button class="check" data-action="del-event" data-id="' + e.id + '" style="border-color:#E0C4B8;color:#A54B32">' + icon('x', 13) + '</button>' : ''}
@@ -438,22 +479,27 @@ function renderCalMonat() {
   return html;
 }
 
-function openEventSheet(dateISO) {
+function openEventSheet(dateISO, id) {
+  const ev = id ? DATA.events.find(e => e.id === id) : null;
+  const w = ev ? ev.who : 'beide';
   openSheet(`
-    <h2>Neuer Termin</h2>
+    <h2>${ev ? 'Termin bearbeiten' : 'Neuer Termin'}</h2>
     <label class="f">Titel</label>
-    <input class="f" id="evTitle" placeholder="z. B. Kino mit Linda">
+    <input class="f" id="evTitle" value="${ev ? esc(ev.title) : ''}" placeholder="z. B. Kino mit Linda">
     <div class="frow">
-      <div><label class="f">Datum</label><input class="f" id="evDate" type="date" value="${dateISO}"></div>
-      <div><label class="f">Uhrzeit</label><input class="f" id="evTime" type="time"></div>
+      <div><label class="f">Datum</label><input class="f" id="evDate" type="date" value="${ev ? ev.date : dateISO}"></div>
+      <div><label class="f">Uhrzeit</label><input class="f" id="evTime" type="time" value="${ev ? esc(ev.time || '') : ''}"></div>
     </div>
     <label class="f">Wer?</label>
     <select class="f" id="evWho">
-      <option value="beide">Wir beide</option>
-      <option value="stefan">Stefan</option>
-      <option value="linda">Linda</option>
+      <option value="beide" ${w === 'beide' ? 'selected' : ''}>Wir beide</option>
+      <option value="stefan" ${w === 'stefan' ? 'selected' : ''}>Stefan</option>
+      <option value="linda" ${w === 'linda' ? 'selected' : ''}>Linda</option>
     </select>
-    <div style="margin-top:16px"><button class="btn full" data-action="save-event">Eintragen</button></div>
+    <div style="margin-top:16px;display:flex;gap:8px">
+      ${ev ? '<button class="btn danger small" data-action="del-event-sheet" data-id="' + ev.id + '">Löschen</button>' : ''}
+      <button class="btn" style="flex:1" data-action="save-event" data-id="${ev ? ev.id : ''}">${ev ? 'Speichern' : 'Eintragen'}</button>
+    </div>
   `);
 }
 
@@ -801,15 +847,19 @@ function handleAction(a, el) {
       break;
     }
     case 'todo-toggle': { const t = DATA.todos.find(x => x.id === id); if (t) { t.done = !t.done; save(); render(); } break; }
-    case 'todo-who': {
+    case 'todo-assign': openTodoSheet(id); break;
+    case 'todo-set-who': {
       const t = DATA.todos.find(x => x.id === id);
-      if (t) {
-        const order = ['beide', 'stefan', 'linda'];
-        t.who = order[(order.indexOf(t.who || 'beide') + 1) % order.length];
-        save(); render();
-      }
+      if (t) { t.who = el.dataset.w; save(); openTodoSheet(id); }
       break;
     }
+    case 'todo-save-due': {
+      const t = DATA.todos.find(x => x.id === id);
+      if (t) { t.due = document.getElementById('tdDue').value; save(); }
+      closeSheet(); render();
+      break;
+    }
+    case 'todo-del': DATA.todos = DATA.todos.filter(x => x.id !== id); save(); closeSheet(); render(); break;
     case 'todo-clear': DATA.todos = DATA.todos.filter(t => !t.done); save(); render(); break;
 
     /* Kalender */
@@ -830,15 +880,20 @@ function handleAction(a, el) {
     case 'cal-day': state.calSel = el.dataset.iso; render(); break;
     case 'cal-day-tag': state.calSel = el.dataset.iso; state.calView = 'tag'; render(); break;
     case 'add-event': openEventSheet(state.calSel || todayISO()); break;
+    case 'edit-event': openEventSheet(null, id); break;
     case 'save-event': {
       const title = document.getElementById('evTitle').value.trim();
       const date = document.getElementById('evDate').value;
       if (!title || !date) break;
-      DATA.events.push({ id: uid(), title, date, time: document.getElementById('evTime').value, who: document.getElementById('evWho').value });
+      const fields = { title, date, time: document.getElementById('evTime').value, who: document.getElementById('evWho').value };
+      const ev = id ? DATA.events.find(e => e.id === id) : null;
+      if (ev) Object.assign(ev, fields);
+      else DATA.events.push({ id: uid(), ...fields });
       state.calSel = date;
-      save(); closeSheet(); render(); toast('Termin eingetragen'); break;
+      save(); closeSheet(); render(); toast(ev ? 'Termin geändert' : 'Termin eingetragen'); break;
     }
     case 'del-event': DATA.events = DATA.events.filter(x => x.id !== id); save(); render(); break;
+    case 'del-event-sheet': DATA.events = DATA.events.filter(x => x.id !== id); save(); closeSheet(); render(); toast('Termin gelöscht'); break;
     case 'ics-refresh': refreshIcs(false); break;
 
     /* Küche */
