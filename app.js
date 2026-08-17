@@ -255,7 +255,7 @@ function taskRow(t) {
 /* ---------- Haushalt ---------- */
 function taskMini(t) {
   const done = taskIsDone(t);
-  return `<div class="task-mini ${done ? 'done' : ''}">
+  return `<div class="task-mini ${done ? 'done' : ''}" data-drag-kind="task" data-drag-id="${t.id}">
     <button class="check ${done ? 'on' : ''}" data-action="toggle-task" data-id="${t.id}">${icon('check', 13)}</button>
     <div class="grow" data-action="edit-task" data-id="${t.id}">
       <div class="title">${esc(t.title)}</div>
@@ -265,7 +265,7 @@ function taskMini(t) {
 }
 
 function todoMini(t) {
-  return `<div class="task-mini ${t.done ? 'done' : ''}">
+  return `<div class="task-mini ${t.done ? 'done' : ''}" data-drag-kind="todo" data-drag-id="${t.id}">
     <button class="check ${t.done ? 'on' : ''}" data-action="todo-toggle" data-id="${t.id}">${icon('check', 13)}</button>
     <div class="grow" data-action="todo-assign" data-id="${t.id}">
       <div class="title">${esc(t.title)}</div>
@@ -313,15 +313,16 @@ function renderHaushalt() {
     const st = open.filter(t => taskWho(t) === 'stefan');
     const li = open.filter(t => taskWho(t) === 'linda');
     html += `<div class="duo">
-      <div>
+      <div data-col="stefan">
         <div class="colhead stefan">Stefan</div>
         ${st.map(taskMini).join('') + tdOf('stefan').map(todoMini).join('') || '<div class="hint" style="padding:4px 2px">Nichts offen – stark!</div>'}
       </div>
-      <div>
+      <div data-col="linda">
         <div class="colhead linda">Linda</div>
         ${li.map(taskMini).join('') + tdOf('linda').map(todoMini).join('') || '<div class="hint" style="padding:4px 2px">Nichts offen – stark!</div>'}
       </div>
-    </div>`;
+    </div>
+    <div class="mut" style="margin:2px 2px 0">Tipp: Karte gedrückt halten und in die andere Spalte ziehen, um sie zuzuschieben.</div>`;
   } else {
     html += emptyState('star', 'Alles erledigt – ihr seid ein Traumteam!');
   }
@@ -342,16 +343,17 @@ function renderHaushalt() {
   </div>
   <div class="mut" style="margin:2px 2px 8px">Direkt zuweisen – oder später per Antippen zuschieben.</div>
 
-  <h2 class="sect">Gemeinsame To-dos</h2>`;
+  <h2 class="sect">Gemeinsame To-dos</h2><div data-col="beide">`;
   const beideTodos = DATA.todos.filter(t => !t.done && (t.who || 'beide') === 'beide');
-  if (!beideTodos.length) html += `<div class="card"><div class="hint">Gerade keine gemeinsamen To-dos – Stefans und Lindas stehen oben in den Spalten.</div></div>`;
+  if (!beideTodos.length) html += `<div class="card"><div class="hint">Gerade keine gemeinsamen To-dos – Stefans und Lindas stehen oben in den Spalten. Karten hierher ziehen macht sie wieder gemeinsam.</div></div>`;
   for (const t of beideTodos) {
-    html += `<div class="row">
+    html += `<div class="row" data-drag-kind="todo" data-drag-id="${t.id}">
       <button class="check" data-action="todo-toggle" data-id="${t.id}">${icon('check', 15)}</button>
       <div class="grow" data-action="todo-assign" data-id="${t.id}"><div class="title">${esc(t.title)}</div><div class="meta">${t.due ? 'bis ' + esc(fmtShort(t.due)) : 'gemeinsam'}</div></div>
       <span class="chip beide" data-action="todo-assign" data-id="${t.id}" style="cursor:pointer">Beide</span>
     </div>`;
   }
+  html += `</div>`;
   const doneTodos = DATA.todos.filter(t => t.done);
   if (doneTodos.length) {
     html += `<div class="cathead">Erledigt</div>`;
@@ -706,8 +708,8 @@ function openMealSheet(iso, slot) {
   slot = slot || 'a';
   const m = mealAt(iso, slot);
   const lbl = slot === 'm' ? 'Mittagessen' : 'Abendessen';
-  const recipeRows = DATA.recipes.map(r =>
-    `<div class="row" data-action="meal-set" data-iso="${iso}" data-slot="${slot}" data-rid="${r.id}">
+  const recipeRows = DATA.recipes.slice().sort((a, b) => a.name.localeCompare(b.name, 'de')).map(r =>
+    `<div class="row" data-action="meal-set" data-iso="${iso}" data-slot="${slot}" data-rid="${r.id}" data-meal-row data-search="${esc((r.name + ' ' + r.ing.join(' ')).toLowerCase())}">
       <span class="ric">${icon('pot', 18)}</span>
       <div class="grow"><div class="title">${esc(r.name)}</div><div class="meta">${r.ing.length} Zutaten</div></div>
     </div>`).join('');
@@ -718,9 +720,8 @@ function openMealSheet(iso, slot) {
     ${m ? '<button class="btn ghost small full" style="margin-bottom:14px" data-action="meal-clear" data-iso="' + iso + '" data-slot="' + slot + '">Eintrag entfernen</button>' : ''}
     <button class="btn ghost small full" data-action="meal-roll" data-iso="${iso}" data-slot="${slot}">${icon('dice', 16)} Vorschlag würfeln</button>
     <button class="btn ghost small full" style="margin-top:8px" data-action="ai-recipe-open" data-iso="${iso}" data-slot="${slot}">${icon('spark', 16)} Rezept mit KI erfinden</button>
-    <label class="f">Freitext (z. B. „Reste essen“, „Essen gehen“)</label>
-    <div class="addbar"><input class="f" id="mealText" placeholder="Gericht eintippen …"><button class="btn" data-action="meal-set-text" data-iso="${iso}" data-slot="${slot}">OK</button></div>
-    <label class="f">Oder ein Rezept wählen</label>
+    <label class="f">Gericht wählen</label>
+    <input class="f" id="mealSearch" placeholder="Suchen … (z. B. Pasta, Kürbis, Feta)" autocomplete="off" style="margin-bottom:10px">
     ${recipeRows}
   `);
 }
@@ -807,11 +808,20 @@ function renderUns() {
     <div class="sub">Abend aussuchen, Idee würfeln, Essen einplanen – fertig.</div>
   </div>`;
 
+  const [q1, q2] = dailyCoupleQuestions();
+  const mission = weeklyMission();
   html += `<h2 class="sect">Verbundenheit</h2>
   <div class="card sand">
-    <div class="hint" style="font-size:11px;font-weight:800;letter-spacing:0.08em;text-transform:uppercase;color:var(--olive);margin-bottom:6px">Gesprächsfrage des Tages</div>
-    <div style="font-family:var(--serif);font-style:italic;font-size:16.5px;line-height:1.45">${esc(dailyCoupleQuestion())}</div>
+    <div class="hint" style="font-size:11px;font-weight:800;letter-spacing:0.08em;text-transform:uppercase;color:var(--olive);margin-bottom:6px">Gesprächsfragen des Tages</div>
+    <div style="font-family:var(--serif);font-style:italic;font-size:16px;line-height:1.45">1. ${esc(q1)}</div>
+    <div style="font-family:var(--serif);font-style:italic;font-size:16px;line-height:1.45;margin-top:8px">2. ${esc(q2)}</div>
     <div class="hint" style="margin-top:8px">Beim Abendessen stellen – und wirklich zuhören.</div>
+  </div>
+  <div class="card" style="border-left:4px solid #B98A3D">
+    <div class="hint" style="font-size:11px;font-weight:800;letter-spacing:0.08em;text-transform:uppercase;color:#B98A3D;margin-bottom:6px">Mission der Woche · ${esc(nameOf(mission.wer))} bereitet vor</div>
+    ${mission.wer === me()
+      ? '<div style="font-size:15px;line-height:1.45">' + esc(mission.task) + '</div><div class="hint" style="margin-top:8px">Deine geheime Mission – ' + esc(nameOf(partner())) + ' sieht sie nicht. Pssst.</div>'
+      : '<div style="font-size:15px;line-height:1.45">' + esc(nameOf(mission.wer)) + ' hat diese Woche eine geheime Mission für dich … lass dich überraschen. 🎁</div>'}
   </div>`;
   const myCi = checkinOf(me()), paCi = checkinOf(partner());
   html += `<div class="card" data-action="checkin-open" style="cursor:pointer">
@@ -1675,6 +1685,7 @@ async function refreshIcs(silent) {
 
 /* ---------- Ereignis-Verkabelung ---------- */
 document.addEventListener('click', e => {
+  if (window._justDropped && Date.now() - window._justDropped < 450) return; // Klick nach Drag verschlucken
   const tabBtn = e.target.closest('[data-tab]');
   if (tabBtn) { state.tab = tabBtn.dataset.tab; render(); return; }
   const el = e.target.closest('[data-action]');
@@ -1690,6 +1701,12 @@ document.addEventListener('input', e => {
   if (e.target.id === 'recipeSearch') {
     const q = e.target.value.toLowerCase().trim();
     document.querySelectorAll('[data-recipe-row]').forEach(r => {
+      r.style.display = !q || r.dataset.search.includes(q) ? '' : 'none';
+    });
+  }
+  if (e.target.id === 'mealSearch') {
+    const q = e.target.value.toLowerCase().trim();
+    document.querySelectorAll('#sheet [data-meal-row]').forEach(r => {
       r.style.display = !q || r.dataset.search.includes(q) ? '' : 'none';
     });
   }
@@ -1715,6 +1732,106 @@ document.addEventListener('change', e => {
 });
 document.getElementById('sheetBackdrop').addEventListener('click', () => { stopVoiceRecognition(); closeSheet(); });
 document.getElementById('micBtn').addEventListener('click', startVoice);
+
+/* ---------- Ziehen & Zuschieben: Karten zwischen den Spalten ---------- */
+let _drag = null;
+
+function dragStart(x, y) {
+  if (!_drag || _drag.active) return;
+  _drag.active = true;
+  const r = _drag.card.getBoundingClientRect();
+  const ghost = _drag.card.cloneNode(true);
+  Object.assign(ghost.style, {
+    position: 'fixed', left: r.left + 'px', top: r.top + 'px', width: r.width + 'px',
+    zIndex: 999, pointerEvents: 'none', margin: 0,
+    transform: 'rotate(2deg) scale(1.04)', boxShadow: '0 12px 26px rgba(47,50,34,0.3)', opacity: 0.96,
+  });
+  document.body.appendChild(ghost);
+  _drag.ghost = ghost;
+  _drag.dx = x - r.left; _drag.dy = y - r.top;
+  _drag.card.style.opacity = '0.35';
+  if (navigator.vibrate) { try { navigator.vibrate(10); } catch (e) {} }
+  document.querySelectorAll('[data-col]').forEach(c => c.classList.add('droppable'));
+}
+function dragColAt(x, y) {
+  // Robust über Rechteck-Vergleich statt elementFromPoint
+  for (const c of document.querySelectorAll('[data-col]')) {
+    const r = c.getBoundingClientRect();
+    if (x >= r.left - 4 && x <= r.right + 4 && y >= r.top - 8 && y <= r.bottom + 8) return c.dataset.col;
+  }
+  return null;
+}
+function dragCancel() {
+  if (!_drag) return;
+  clearTimeout(_drag.timer);
+  if (_drag.ghost) _drag.ghost.remove();
+  if (_drag.card) _drag.card.style.opacity = '';
+  document.querySelectorAll('[data-col]').forEach(c => c.classList.remove('droppable', 'dropover'));
+  _drag = null;
+}
+function dragDrop(col) {
+  if (_drag.kind === 'todo') {
+    const t = DATA.todos.find(x => x.id === _drag.id);
+    if (t && (t.who || 'beide') !== col) {
+      t.who = col;
+      save(); render();
+      toast(col === 'beide' ? 'Wieder gemeinsam' : nameOf(col) + ' übernimmt');
+      if (col === partner()) pingPartner('Ein To-do für dich', t.title);
+    }
+  } else if (_drag.kind === 'task' && col !== 'beide') {
+    const t = DATA.tasks.find(x => x.id === _drag.id);
+    if (t && taskWho(t) !== col) {
+      const idx = t.rotation.indexOf(col);
+      if (idx >= 0) t.turn = idx;
+      else { t.rotation = [col]; t.turn = 0; }
+      save(); render();
+      toast(nameOf(col) + ' übernimmt „' + t.title + '“');
+      if (col === partner()) pingPartner('Aufgabe zugeschoben', t.title);
+    }
+  }
+}
+
+document.addEventListener('pointerdown', e => {
+  if (state.tab !== 'haushalt') return;
+  const card = e.target.closest('[data-drag-kind]');
+  if (!card || e.target.closest('.check')) return; // Abhaken bleibt Abhaken
+  _drag = {
+    card, id: card.dataset.dragId, kind: card.dataset.dragKind,
+    x0: e.clientX, y0: e.clientY, active: false,
+  };
+  _drag.timer = setTimeout(() => dragStart(_drag.x0, _drag.y0), 350); // gedrückt halten
+});
+document.addEventListener('pointermove', e => {
+  if (!_drag) return;
+  const dx = e.clientX - _drag.x0, dy = e.clientY - _drag.y0;
+  if (!_drag.active) {
+    // Seitliches Wischen startet das Ziehen sofort; senkrecht = normales Scrollen
+    if (Math.abs(dx) > 16 && Math.abs(dx) > Math.abs(dy) * 1.4) { clearTimeout(_drag.timer); dragStart(e.clientX, e.clientY); }
+    else if (Math.abs(dy) > 14) dragCancel();
+    return;
+  }
+  e.preventDefault();
+  _drag.ghost.style.left = (e.clientX - _drag.dx) + 'px';
+  _drag.ghost.style.top = (e.clientY - _drag.dy) + 'px';
+  // Sanft mitscrollen, wenn man an den Rand zieht (z. B. runter zu „Gemeinsame To-dos“)
+  if (e.clientY > window.innerHeight - 90) window.scrollBy(0, 10);
+  else if (e.clientY < 90) window.scrollBy(0, -10);
+  const col = dragColAt(e.clientX, e.clientY);
+  document.querySelectorAll('[data-col]').forEach(c => c.classList.toggle('dropover', c.dataset.col === col));
+}, { passive: false });
+document.addEventListener('pointerup', e => {
+  if (!_drag) return;
+  clearTimeout(_drag.timer);
+  const wasActive = _drag.active;
+  if (wasActive) {
+    window._justDropped = Date.now();
+    const col = dragColAt(e.clientX, e.clientY);
+    if (col) dragDrop(col);
+    e.preventDefault();
+  }
+  dragCancel();
+});
+document.addEventListener('pointercancel', dragCancel);
 
 /* ---------- Erinnerungen (bei geöffneter App) ---------- */
 function maybeNotify() {
@@ -1757,6 +1874,16 @@ async function maybePushPrompt() {
 }
 
 if (cleanupHolidayIcs()) save();
+
+/* Einmalig: 100 vegetarische Basis-Rezepte einspielen (ohne Dubletten) */
+if (!DATA.settings.recipeBaseV1) {
+  const have = new Set(DATA.recipes.map(r => r.name.toLowerCase()));
+  for (const [name, ing] of BASE_RECIPES) {
+    if (!have.has(name.toLowerCase())) DATA.recipes.push({ id: uid(), name, ing, anleitung: '' });
+  }
+  DATA.settings.recipeBaseV1 = true;
+  save();
+}
 
 render();
 maybeNotify();
