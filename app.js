@@ -256,7 +256,7 @@ function taskRow(t) {
     <button class="check ${done ? 'on' : ''}" data-action="toggle-task" data-id="${t.id}">${icon('check', 15)}</button>
     <div class="grow" data-action="edit-task" data-id="${t.id}">
       <div class="title">${esc(t.title)}</div>
-      <div class="meta">${FREQ_LABEL[t.freq] || ''}${t.rotation.length > 1 ? ' · im Wechsel' : ''}</div>
+      <div class="meta">${FREQ_LABEL[t.freq] || ''}${t.day != null ? ' · am ' + WD[t.day] : ''}${t.rotation.length > 1 ? ' · im Wechsel' : ''}</div>
     </div>
     ${whoChip(taskWho(t))}
   </div>`;
@@ -386,13 +386,20 @@ function openTaskSheet(id) {
     <h2>${t ? 'Aufgabe bearbeiten' : 'Neue Aufgabe'}</h2>
     <label class="f">Aufgabe</label>
     <input class="f" id="tkTitle" value="${t ? esc(t.title) : ''}" placeholder="z. B. Altglas wegbringen">
-    <label class="f">Rhythmus</label>
-    <select class="f" id="tkFreq">
-      <option value="daily" ${t && t.freq === 'daily' ? 'selected' : ''}>täglich</option>
-      <option value="weekly" ${!t || t.freq === 'weekly' ? 'selected' : ''}>jede Woche</option>
-      <option value="biweekly" ${t && t.freq === 'biweekly' ? 'selected' : ''}>alle 2 Wochen</option>
-      <option value="monthly" ${t && t.freq === 'monthly' ? 'selected' : ''}>jeden Monat</option>
-    </select>
+    <div class="frow">
+      <div><label class="f">Rhythmus</label>
+      <select class="f" id="tkFreq">
+        <option value="daily" ${t && t.freq === 'daily' ? 'selected' : ''}>täglich</option>
+        <option value="weekly" ${!t || t.freq === 'weekly' ? 'selected' : ''}>jede Woche</option>
+        <option value="biweekly" ${t && t.freq === 'biweekly' ? 'selected' : ''}>alle 2 Wochen</option>
+        <option value="monthly" ${t && t.freq === 'monthly' ? 'selected' : ''}>jeden Monat</option>
+      </select></div>
+      <div><label class="f">Am liebsten am</label>
+      <select class="f" id="tkDay">
+        <option value="">egal</option>
+        ${WD.map((d, i) => '<option value="' + i + '" ' + (t && t.day === i ? 'selected' : '') + '>' + d + '</option>').join('')}
+      </select></div>
+    </div>
     <label class="f">Wer ist dran?</label>
     <select class="f" id="tkRot">
       <option value="st-li" ${rotVal === 'st-li' ? 'selected' : ''}>Im Wechsel – Stefan beginnt</option>
@@ -993,9 +1000,27 @@ function renderTrainingWeek(mon) {
   const wk = Math.max(1, Math.floor((new Date(t) - new Date(plan.startISO)) / (7 * 864e5)) + 1);
   const total = plan.duration === '3m' ? 13 : 4;
   let html = `<div class="card sand" style="margin-bottom:12px">
-    <b>${esc(GOAL_LABEL[plan.goal] || 'Mein Plan')}</b> · ${plan.freq}× pro Woche · Woche ${Math.min(wk, total)} von ${total}
+    <b>${esc(planGoals(plan).map(g => GOAL_LABEL[g] || g).join(' + ') || 'Mein Plan')}</b> · ${plan.freq}× pro Woche · Woche ${Math.min(wk, total)} von ${total}
     <div class="hint" style="margin-top:6px">${esc(plan.progression)}</div>
   </div>`;
+  // Rückblick auf die Vorwoche + Ausblick auf die kommende
+  const stats = trainingLastWeekStats(me(), mon);
+  const nextMon = toISO(addDays(new Date(mon + 'T12:00'), 7));
+  const nextFree = trainingFreeEvenings(me(), nextMon);
+  const analyse = [];
+  if (stats) {
+    const q = stats.done / stats.total;
+    if (q >= 1) analyse.push('Letzte Woche alle ' + stats.total + ' Einheiten geschafft – weiter so!');
+    else if (q > 0.5) analyse.push('Letzte Woche ' + stats.done + ' von ' + stats.total + ' geschafft – solide.');
+    else analyse.push('Letzte Woche wurden es ' + stats.done + ' von ' + stats.total + ' – diese Woche plane ich eine Einheit weniger, dranbleiben zählt mehr als Volumen.');
+    if (stats.extras) analyse.push('Plus ' + stats.extras + ' extra – stark!');
+    if (stats.missedIntervall) analyse.push('Die verpasste Intervalleinheit habe ich nach vorn gelegt.');
+  }
+  if (wk > 1 && wk % 4 === 0 && planGoals(plan).some(g => g === 'staerker' || g === 'masse' || g === 'ausdauer')) {
+    analyse.push('Woche ' + Math.min(wk, total) + ' ist deine Deload-Woche: gleiche Einheiten, aber nur ~70 % vom Gewicht bzw. Umfang – so verarbeitet der Körper den Fortschritt.');
+  }
+  if (nextFree < plan.freq) analyse.push('Ausblick: Nächste Woche wird eng (' + nextFree + ' freie Abende für ' + plan.freq + ' Einheiten) – ich plane dann automatisch um.');
+  if (analyse.length) html += `<div class="card" style="margin-bottom:12px;font-size:13px;line-height:1.5">${icon('spark', 14)} ${esc(analyse.join(' '))}</div>`;
   for (const e of entries) {
     const iso = toISO(addDays(new Date(mon + 'T12:00'), e.day));
     const isToday = iso === t;
@@ -1010,6 +1035,10 @@ function renderTrainingWeek(mon) {
     </div>`;
   }
   html += `<div style="display:flex;gap:8px;margin-top:14px">
+    <button class="btn ghost small" style="flex:1" data-action="training-extra">${icon('plus', 14)} Extra-Einheit</button>
+    <button class="btn ghost small" style="flex:1" data-action="training-log-past">Nachtragen</button>
+  </div>
+  <div style="display:flex;gap:8px;margin-top:8px">
     <button class="btn ghost small" style="flex:1" data-action="training-wizard">Plan anpassen</button>
     <button class="btn ghost small" style="flex:1" data-action="training-replan">Woche neu legen</button>
   </div>`;
@@ -1088,14 +1117,17 @@ function renderTrainingTogether(mon) {
 
 function openWorkoutSheet(cat, mon, day) {
   const plan = trainingState().plans[me()];
-  const w = adaptWorkoutToGoal(cat, plan && cat.startsWith('gym') ? plan.goal : null);
+  const gymGoal = plan && cat.startsWith('gym') ? primaryGymGoal(plan) : null;
+  const w = adaptWorkoutToGoal(cat, gymGoal);
   if (!w) return;
-  const note = plan && GOAL_NOTES[plan.goal] && (cat.startsWith('gym') || workoutFamily(cat) === 'kraft') ? GOAL_NOTES[plan.goal] : '';
+  const note = gymGoal && GOAL_NOTES[gymGoal] ? GOAL_NOTES[gymGoal] : '';
   openSheet(`
     <h2>${esc(w.name)}</h2>
     <p class="mut">~${w.minutes} Min. · ${esc(w.rounds)}</p>
     ${note ? '<div class="card sand" style="margin-bottom:10px;font-size:13px">' + esc(note) + '</div>' : ''}
-    ${w.ex.map(([n, v]) => '<div class="row"><span class="ric">' + icon('hantel', 16) + '</span><div class="grow"><div class="title">' + esc(n) + '</div></div><span class="meta">' + esc(v) + '</span></div>').join('')}
+    ${cat.startsWith('gym') && cat !== 'gym-ausdauer' ? '<div class="hint" style="margin-bottom:10px">Aufwärmen: 5 Min. locker (Rad/Rudern) + 1–2 leichte Aufwärmsätze der ersten Übung.</div>' : ''}
+    ${w.ex.map(([n, v]) => '<div class="row" data-action="exercise-open" data-name="' + esc(n) + '" data-cat="' + cat + '"' + (mon !== undefined ? ' data-mon="' + mon + '" data-day="' + day + '"' : '') + '><span class="ric">' + icon('hantel', 16) + '</span><div class="grow"><div class="title">' + esc(n) + '</div></div><span class="meta">' + esc(v) + '</span></div>').join('')}
+    <p class="hint" style="margin-top:6px">Übung antippen: Erklärung${cat.startsWith('gym') ? ' + Gewichts-Tagebuch' : ''}.</p>
     <div style="margin-top:14px;display:flex;flex-direction:column;gap:8px">
       ${mon !== undefined && day !== undefined ? '<button class="btn full" data-action="training-done-sheet" data-mon="' + mon + '" data-day="' + day + '">' + icon('check', 16) + ' Geschafft – abhaken</button>' : ''}
       <button class="btn ghost small full" data-action="training-to-cal" data-cat="${cat}" data-title="${esc(w.name)}">${icon('cal', 15)} Als Termin in den Kalender</button>
@@ -1103,20 +1135,77 @@ function openWorkoutSheet(cat, mon, day) {
   `);
 }
 
+/* Übungs-Detail: Erklärung, Video-Link und (im Gym) Gewichts-Tagebuch */
+function exerciseInfo(name) {
+  if (typeof UEBUNGEN === 'undefined') return '';
+  if (UEBUNGEN[name]) return UEBUNGEN[name];
+  const key = Object.keys(UEBUNGEN).find(k => name.includes(k) || k.includes(name));
+  return key ? UEBUNGEN[key] : '';
+}
+function openExerciseSheet(name, cat, mon, day) {
+  const info = exerciseInfo(name);
+  const isGym = cat && cat.startsWith('gym');
+  const ts = trainingState();
+  if (!ts.log) ts.log = {};
+  if (!ts.log[me()]) ts.log[me()] = {};
+  const hist = (ts.log[me()][name] || []).slice(-3).reverse();
+  const back = `data-action="training-open" data-cat="${cat}"` + (mon !== undefined && mon !== '' ? ` data-mon="${mon}" data-day="${day}"` : '');
+  openSheet(`
+    <h2>${esc(name)}</h2>
+    ${info ? '<div class="card" style="font-size:14px;line-height:1.55">' + esc(info) + '</div>' : '<p class="mut">Für diesen Punkt gibt es keine eigene Erklärung – einfach locker nach Gefühl.</p>'}
+    <a class="btn ghost small full" style="margin-top:10px;text-align:center;text-decoration:none;display:block" href="https://www.youtube.com/results?search_query=${encodeURIComponent(name.replace(/\(.*\)/, '').trim() + ' Übung Ausführung')}" target="_blank" rel="noopener">▶ Video zur Ausführung ansehen</a>
+    ${isGym ? `
+      <div class="cathead" style="margin-top:14px">Dein Tagebuch</div>
+      ${hist.length ? hist.map(h => '<div class="row"><div class="grow"><div class="title">' + h.w + ' kg × ' + h.r + '</div><div class="meta">' + esc(fmtShort(h.d)) + '</div></div></div>').join('') : '<p class="mut">Noch kein Eintrag – trag nach dem ersten Satz dein Gewicht ein, dann siehst du hier deine Steigerung.</p>'}
+      <div class="frow" style="margin-top:8px">
+        <div><label class="f">Gewicht (kg)</label><input class="f" id="exLogW" type="number" inputmode="decimal" step="0.5" value="${hist[0] ? hist[0].w : ''}"></div>
+        <div><label class="f">Wiederholungen</label><input class="f" id="exLogR" type="number" inputmode="numeric" value="${hist[0] ? hist[0].r : ''}"></div>
+      </div>
+      <button class="btn full" style="margin-top:10px" data-action="exercise-log" data-name="${esc(name)}" data-cat="${cat}" data-mon="${mon !== undefined ? mon : ''}" data-day="${day !== undefined ? day : ''}">Eintragen</button>
+    ` : ''}
+    <button class="btn ghost small full" style="margin-top:10px" ${back}>Zurück zum Workout</button>
+  `);
+}
+
+/* Spontan mehr oder weniger: Einheit dazunehmen oder nachtragen */
+function openTrainingExtraSheet(mode) {
+  const groups = [
+    ['Zuhause', ['home-ganzkoerper', 'home-bauch', 'home-beine', 'home-arme', 'home-stretch', 'home-yoga']],
+    ['Gym', ['gym-ganzkoerper', 'gym-oberkoerper', 'gym-unterkoerper', 'gym-push', 'gym-pull', 'gym-bauch', 'gym-ausdauer', 'gym-sprungkraft']],
+    ['Ausdauer', ['cardio-joggen', 'cardio-radfahren', 'cardio-schwimmen']],
+    ['Zu zweit', ['paar-zirkel20', 'paar-sync20', 'paar-kraft30', 'paar-spass30']],
+  ];
+  let rows = '';
+  for (const [label, cats] of groups) {
+    rows += `<div class="cathead">${label}</div>`;
+    for (const cat of cats) {
+      const w = workoutByCat(cat);
+      rows += `<div class="row" data-action="training-extra-pick" data-cat="${cat}" data-mode="${mode}"><span class="ric">${icon('hantel', 16)}</span><div class="grow"><div class="title">${esc(w.name)}</div><div class="meta">~${w.minutes} Min.</div></div></div>`;
+    }
+  }
+  openSheet(`
+    <h2>${mode === 'done' ? 'Was hast du gemacht?' : 'Extra-Einheit diese Woche'}</h2>
+    <p class="mut">${mode === 'done' ? 'Wird als erledigt in deine Woche eingetragen.' : 'Ich lege sie auf einen freien Tag – verschieben geht immer.'}</p>
+    ${rows}
+  `);
+}
+
 function openTrainingWizard() {
   const plan = trainingState().plans[me()] || {};
   const el = (v, cur) => v === cur ? 'selected' : '';
   const chk = v => (plan.elements || []).includes(v) ? 'checked' : '';
+  const gchk = v => planGoals(plan).includes(v) ? 'checked' : '';
   openSheet(`
     <h2>Dein Trainingsplan</h2>
-    <label class="f">Was ist dein Ziel?</label>
-    <select class="f" id="twGoal">
-      <option value="fit" ${el('fit', plan.goal)}>Rundum fit werden</option>
-      <option value="staerker" ${el('staerker', plan.goal)}>Stärker werden (Kraft)</option>
-      <option value="masse" ${el('masse', plan.goal)}>Muskeln aufbauen</option>
-      <option value="ausdauer" ${el('ausdauer', plan.goal)}>Ausdauer verbessern</option>
-      <option value="beweglich" ${el('beweglich', plan.goal)}>Beweglicher werden</option>
-    </select>
+    <label class="f">Was sind deine Ziele? (mehrere möglich)</label>
+    <div class="card" style="display:flex;flex-direction:column;gap:10px;font-size:14px">
+      <label style="display:flex;gap:10px;align-items:center"><input type="checkbox" id="tgFit" ${gchk('fit')}> Rundum fit werden</label>
+      <label style="display:flex;gap:10px;align-items:center"><input type="checkbox" id="tgStaerker" ${gchk('staerker')}> Stärker werden (Kraft)</label>
+      <label style="display:flex;gap:10px;align-items:center"><input type="checkbox" id="tgMasse" ${gchk('masse')}> Muskeln aufbauen</label>
+      <label style="display:flex;gap:10px;align-items:center"><input type="checkbox" id="tgAusdauer" ${gchk('ausdauer')}> Ausdauer verbessern</label>
+      <label style="display:flex;gap:10px;align-items:center"><input type="checkbox" id="tgBeweglich" ${gchk('beweglich')}> Beweglicher werden</label>
+    </div>
+    <p class="hint" style="margin-top:6px">Empfehlung: Kraft/Muskelaufbau 3–4× · Ausdauer 3× · kombinierte Ziele 4–5×. Wähle, was realistisch ist – dazunehmen oder weglassen geht jede Woche spontan.</p>
     <div class="frow">
       <div><label class="f">Wie oft pro Woche?</label>
         <select class="f" id="twFreq">${[2, 3, 4, 5, 6, 7].map(n => '<option value="' + n + '" ' + (plan.freq === n ? 'selected' : '') + '>' + n + '×</option>').join('')}</select></div>
@@ -1298,9 +1387,11 @@ function handleAction(a, el) {
       const rotMap = { 'st-li': ['stefan', 'linda'], 'li-st': ['linda', 'stefan'], 'nur-stefan': ['stefan'], 'nur-linda': ['linda'] };
       const rot = rotMap[document.getElementById('tkRot').value];
       const freq = document.getElementById('tkFreq').value;
+      const dayV = document.getElementById('tkDay').value;
+      const day = dayV === '' ? null : Number(dayV);
       const t = id ? DATA.tasks.find(x => x.id === id) : null;
-      if (t) { Object.assign(t, { title, freq, rotation: rot, turn: t.turn % rot.length }); }
-      else DATA.tasks.push({ id: uid(), title, freq, anchor: toISO(startOfWeek(new Date())), rotation: rot, turn: 0, doneKey: null });
+      if (t) { Object.assign(t, { title, freq, day, rotation: rot, turn: t.turn % rot.length }); }
+      else DATA.tasks.push({ id: uid(), title, freq, day, anchor: toISO(startOfWeek(new Date())), rotation: rot, turn: 0, doneKey: null });
       save(); closeSheet(); render(); break;
     }
     case 'del-task': DATA.tasks = DATA.tasks.filter(x => x.id !== id); save(); closeSheet(); render(); break;
@@ -1458,6 +1549,13 @@ function handleAction(a, el) {
     case 'trseg': state.training = el.dataset.v; render(); break;
     case 'training-wizard': openTrainingWizard(); break;
     case 'training-create': {
+      const goals = [];
+      if (document.getElementById('tgFit').checked) goals.push('fit');
+      if (document.getElementById('tgStaerker').checked) goals.push('staerker');
+      if (document.getElementById('tgMasse').checked) goals.push('masse');
+      if (document.getElementById('tgAusdauer').checked) goals.push('ausdauer');
+      if (document.getElementById('tgBeweglich').checked) goals.push('beweglich');
+      if (!goals.length) { toast('Wähle mindestens ein Ziel aus'); break; }
       const elements = [];
       if (document.getElementById('twHome').checked) elements.push('home');
       if (document.getElementById('twGym').checked) elements.push('gym');
@@ -1467,7 +1565,7 @@ function handleAction(a, el) {
       if (document.getElementById('twSchwimmen').checked) elements.push('schwimmen');
       if (!elements.length) { toast('Wähle mindestens ein Element aus'); break; }
       const opts = {
-        goal: document.getElementById('twGoal').value,
+        goals,
         freq: Number(document.getElementById('twFreq').value),
         duration: document.getElementById('twDuration').value,
         elements,
@@ -1479,7 +1577,7 @@ function handleAction(a, el) {
       delete ts.week[toISO(startOfWeek(new Date())) + ':' + me()];
       scheduleTrainingWeek(me(), toISO(startOfWeek(new Date())));
       save(); closeSheet(); state.training = 'woche'; render(); toast('Dein Plan steht!');
-      pingPartner(nameOf(me()) + ' hat einen Trainingsplan', (GOAL_LABEL[opts.goal] || '') + ' · ' + opts.freq + '× pro Woche' + (elements.includes('paar') ? ' – mit Paar-Workouts!' : ''));
+      pingPartner(nameOf(me()) + ' hat einen Trainingsplan', goals.map(g => GOAL_LABEL[g] || g).join(' + ') + ' · ' + opts.freq + '× pro Woche' + (elements.includes('paar') ? ' – mit Paar-Workouts!' : ''));
       break;
     }
     case 'training-delete': {
@@ -1530,6 +1628,48 @@ function handleAction(a, el) {
       DATA.events.push({ id: uid(), title: el.dataset.title, date: todayISO(), time: '', who: me(), repeat: '' });
       save(); closeSheet(); state.tab = 'kalender'; state.calSel = todayISO(); render();
       toast('Im Kalender – Datum/Uhrzeit dort anpassen');
+      break;
+    }
+    case 'exercise-open': openExerciseSheet(el.dataset.name, el.dataset.cat, el.dataset.mon, el.dataset.day !== undefined && el.dataset.day !== '' ? Number(el.dataset.day) : undefined); break;
+    case 'exercise-log': {
+      const w = parseFloat(String(document.getElementById('exLogW').value).replace(',', '.'));
+      const r = parseInt(document.getElementById('exLogR').value, 10);
+      if (!w || !r) { toast('Gewicht und Wiederholungen angeben'); break; }
+      const ts = trainingState();
+      if (!ts.log) ts.log = {};
+      if (!ts.log[me()]) ts.log[me()] = {};
+      const arr = ts.log[me()][el.dataset.name] = ts.log[me()][el.dataset.name] || [];
+      const prev = arr[arr.length - 1];
+      arr.push({ d: todayISO(), w, r });
+      if (arr.length > 30) arr.shift();
+      save();
+      const besser = prev && (w > prev.w || (w === prev.w && r > prev.r));
+      toast(besser ? 'Mehr als letztes Mal – stark! 📈' : 'Eingetragen');
+      openExerciseSheet(el.dataset.name, el.dataset.cat, el.dataset.mon !== '' ? el.dataset.mon : undefined, el.dataset.day !== '' ? Number(el.dataset.day) : undefined);
+      break;
+    }
+    case 'training-extra': openTrainingExtraSheet('plan'); break;
+    case 'training-log-past': openTrainingExtraSheet('done'); break;
+    case 'training-extra-pick': {
+      const mon = toISO(startOfWeek(new Date()));
+      const entries = trainingWeekEntries(me(), mon) || scheduleTrainingWeek(me(), mon) || (trainingState().week[mon + ':' + me()] = []);
+      const w = workoutByCat(el.dataset.cat);
+      const todayIdx = (new Date().getDay() + 6) % 7;
+      if (el.dataset.mode === 'done') {
+        entries.push({ cat: el.dataset.cat, title: w.name, minutes: w.minutes, day: todayIdx, done: true, extra: true });
+        entries.sort((x, y) => x.day - y.day);
+        save(); closeSheet(); render(); toast('Nachgetragen – stark! 💪');
+        pingBatched('training', nameOf(me()) + ' hat trainiert', w.name, 5000);
+      } else {
+        let best = todayIdx;
+        for (let d = todayIdx; d < 7; d++) {
+          const iso = toISO(addDays(new Date(mon + 'T12:00'), d));
+          if (!entries.some(x => x.day === d) && !trainingEveningBusy(iso, me())) { best = d; break; }
+        }
+        entries.push({ cat: el.dataset.cat, title: w.name, minutes: w.minutes, day: best, done: false, extra: true });
+        entries.sort((x, y) => x.day - y.day);
+        save(); closeSheet(); render(); toast('Am ' + WD[best] + ' eingeplant');
+      }
       break;
     }
     case 'training-together': {

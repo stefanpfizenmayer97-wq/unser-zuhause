@@ -94,48 +94,49 @@ const PAAR_WORKOUTS = [
 ];
 
 const GYM_PLANS = {
-  oberkoerper: { name: 'Gym: Oberkörper', minutes: 60, rounds: '3–4 Sätze je Übung, 90 Sek. Pause', ex: [
-    ['Bankdrücken (Langhantel oder Kurzhanteln)', '4×8–10'],
-    ['Latzug oder Klimmzüge', '4×8–10'],
+  oberkoerper: { name: 'Gym: Oberkörper', minutes: 45, rounds: '3 Sätze je Übung, 90 Sek. Pause – zügig durcharbeiten', ex: [
+    ['Bankdrücken (Langhantel oder Kurzhanteln)', '3×8–10'],
+    ['Latzug oder Klimmzüge', '3×8–10'],
     ['Schulterdrücken Kurzhanteln', '3×10'],
     ['Rudern am Kabel', '3×12'],
-    ['Seitheben', '3×15'],
-    ['Bizeps-Curls', '3×12'],
-    ['Trizeps am Kabel', '3×12'],
+    ['Bizeps-Curls', '2×12'],
+    ['Trizeps am Kabel', '2×12'],
   ]},
-  unterkoerper: { name: 'Gym: Unterkörper', minutes: 60, rounds: '3–4 Sätze, 2 Min. Pause bei den großen Übungen', ex: [
-    ['Kniebeugen (Langhantel)', '4×6–8'],
+  unterkoerper: { name: 'Gym: Unterkörper', minutes: 45, rounds: '3 Sätze, 2 Min. Pause bei Kniebeugen/Kreuzheben, sonst 90 Sek.', ex: [
+    ['Kniebeugen (Langhantel)', '3×6–8'],
     ['Rumänisches Kreuzheben', '3×10'],
     ['Beinpresse', '3×12'],
-    ['Ausfallschritte mit Kurzhanteln', '3×10 je Seite'],
-    ['Beinbeuger liegend', '3×12'],
-    ['Wadenheben stehend', '4×15'],
+    ['Ausfallschritte mit Kurzhanteln', '2×10 je Seite'],
+    ['Wadenheben stehend', '3×15'],
     ['Plank', '3×45 Sek.'],
   ]},
-  push: { name: 'Gym: Push (Drücken)', minutes: 60, rounds: '3–4 Sätze, 90–120 Sek. Pause', ex: [
-    ['Bankdrücken', '4×6–8'],
+  push: { name: 'Gym: Push (Drücken)', minutes: 45, rounds: '3 Sätze, 90–120 Sek. Pause', ex: [
+    ['Bankdrücken', '3×6–8'],
     ['Schrägbank Kurzhanteln', '3×10'],
     ['Schulterdrücken', '3×8–10'],
-    ['Seitheben', '4×12–15'],
-    ['Dips', '3×max.'],
-    ['Trizeps über Kopf', '3×12'],
+    ['Seitheben', '3×12–15'],
+    ['Dips', '2×max.'],
   ]},
-  pull: { name: 'Gym: Pull (Ziehen)', minutes: 60, rounds: '3–4 Sätze, 90–120 Sek. Pause', ex: [
-    ['Kreuzheben', '4×5–6'],
-    ['Klimmzüge oder Latzug', '4×8'],
+  pull: { name: 'Gym: Pull (Ziehen)', minutes: 45, rounds: '3 Sätze, 90–120 Sek. Pause', ex: [
+    ['Kreuzheben', '3×5–6'],
+    ['Klimmzüge oder Latzug', '3×8'],
     ['Langhantel-Rudern', '3×10'],
-    ['Face Pulls', '3×15'],
-    ['Bizeps-Curls Langhantel', '3×10'],
-    ['Hammer-Curls', '3×12'],
+    ['Face Pulls', '2×15'],
+    ['Bizeps-Curls Langhantel', '2×10'],
   ]},
-  ganzkoerper: { name: 'Gym: Ganzkörper', minutes: 60, rounds: '3 Sätze je Übung, 90 Sek. Pause', ex: [
-    ['Kniebeugen', '3×8'],
+  ganzkoerper: { name: 'Gym: Ganzkörper A', minutes: 45, rounds: '3 Sätze je Übung, 90 Sek. Pause (große Übungen 2 Min.)', ex: [
+    ['Kniebeugen', '3×6–8'],
     ['Bankdrücken', '3×8'],
     ['Rudern (Langhantel oder Kabel)', '3×10'],
-    ['Schulterdrücken', '3×10'],
-    ['Rumänisches Kreuzheben', '3×10'],
-    ['Latzug', '3×10'],
-    ['Bauch: Kabel-Crunches', '3×15'],
+    ['Schulterdrücken', '2×10'],
+    ['Plank', '3×45 Sek.'],
+  ]},
+  ganzkoerper2: { name: 'Gym: Ganzkörper B', minutes: 45, rounds: '3 Sätze je Übung, 90 Sek. Pause (große Übungen 2 Min.)', ex: [
+    ['Rumänisches Kreuzheben', '3×8'],
+    ['Latzug oder Klimmzüge', '3×8–10'],
+    ['Schrägbank Kurzhanteln', '3×10'],
+    ['Beinpresse', '3×12'],
+    ['Bauch: Kabel-Crunches', '2×15'],
   ]},
   ausdauer: { name: 'Gym: Ausdauer', minutes: 45, rounds: 'Pulsbereich: locker reden können = richtig', ex: [
     ['Aufwärmen Crosstrainer', '5 Min. locker'],
@@ -163,26 +164,50 @@ const GYM_PLANS = {
   ]},
 };
 
+/* Ausdauer nach dem 80/20-Prinzip: Der Großteil locker in Zone 2 (reden möglich),
+   1 Einheit pro Woche intensiv – 4×4-Minuten-Intervalle sind das am besten belegte Format. */
 const CARDIO_PLANS = {
-  joggen: { name: 'Joggen', minutes: 40, rounds: 'Tempo: entspannt reden können. Steigerung: jede Woche 5 Min. länger', ex: [
+  joggen: { name: 'Lockerer Lauf (Zone 2)', minutes: 40, rounds: 'Grundlagenausdauer: So locker, dass du dich nebenher unterhalten könntest – das ist der Bereich, in dem die Ausdauer wächst', ex: [
     ['Warmlaufen ganz locker', '5 Min.'],
-    ['Dauerlauf im Wohlfühltempo', '25 Min.'],
-    ['Alternativ Intervalle: 3 Min. zügig / 2 Min. Gehen', '5 Runden'],
-    ['Auslaufen + Dehnen (Waden, Oberschenkel, Hüfte)', '10 Min.'],
+    ['Dauerlauf im Plaudertempo (Zone 2)', '30 Min.'],
+    ['Auslaufen + Dehnen (Waden, Oberschenkel, Hüfte)', '5 Min.'],
   ]},
-  radfahren: { name: 'Radfahren', minutes: 60, rounds: 'Trittfrequenz ~80–90, Gänge nutzen statt treten mit Gewalt', ex: [
+  'joggen-intervall': { name: 'Intervall-Lauf 4×4', minutes: 35, rounds: 'Das 4×4-Format: 4 Min. hart (Sprechen kaum möglich, ~90 % Maximalpuls), 3 Min. Traben – 4 Runden. Maximal 1× pro Woche', ex: [
+    ['Warmlaufen locker + 3 kurze Steigerungen', '10 Min.'],
+    ['4 Min. hart laufen', 'Runde 1'],
+    ['3 Min. locker traben', 'Pause'],
+    ['4 Min. hart / 3 Min. Traben wiederholen', 'Runden 2–4'],
+    ['Auslaufen ganz locker', '5 Min.'],
+  ]},
+  'joggen-lang': { name: 'Langer Lauf', minutes: 60, rounds: 'Der wöchentliche lange Lauf: betont langsam, jede Woche ~5 Min. länger – nie mehr als 10 % Steigerung', ex: [
+    ['Ganz locker einlaufen', '10 Min.'],
+    ['Langsamer Dauerlauf (bewusst gemütlich)', '40–50 Min.'],
+    ['Gehen zum Abschluss + Dehnen', '5 Min.'],
+  ]},
+  radfahren: { name: 'Grundlagen-Radfahren (Zone 2)', minutes: 60, rounds: 'Trittfrequenz 80–90, Tempo unterhaltungsfähig – Umfang schlägt Intensität', ex: [
     ['Einrollen flach', '10 Min.'],
-    ['Grundlagentempo (unterhaltungsfähig)', '35 Min.'],
-    ['Alternativ: 4× 4 Min. zügig bergauf / 4 Min. locker', '32 Min.'],
-    ['Ausrollen', '10 Min.'],
-    ['Kurz dehnen: Hüftbeuger + Rücken', '5 Min.'],
+    ['Grundlagentempo (Zone 2, reden möglich)', '40 Min.'],
+    ['Ausrollen + kurz dehnen (Hüftbeuger, Rücken)', '10 Min.'],
   ]},
-  schwimmen: { name: 'Schwimmen', minutes: 45, rounds: 'Bahnen à 25 m, Pausen nach Gefühl (15–30 Sek.)', ex: [
+  'rad-intervall': { name: 'Rad-Intervalle 4×4', minutes: 45, rounds: '4 Min. hart (schwerer Gang oder bergauf, ~90 % Puls), 4 Min. locker kurbeln – 4 Runden, max. 1× pro Woche', ex: [
+    ['Einrollen mit steigender Trittfrequenz', '10 Min.'],
+    ['4 Min. hart fahren', 'Runde 1'],
+    ['4 Min. ganz locker kurbeln', 'Pause'],
+    ['4 Min. hart / 4 Min. locker wiederholen', 'Runden 2–4'],
+    ['Ausrollen', '8 Min.'],
+  ]},
+  schwimmen: { name: 'Schwimmen (Technik & Grundlage)', minutes: 45, rounds: 'Bahnen à 25 m, Pausen 15–30 Sek. – Technik vor Tempo: bessere Wasserlage spart mehr Kraft als jedes Training', ex: [
     ['Einschwimmen ruhig (Brust oder Kraul)', '200 m'],
-    ['Technik: 4× 50 m mit Fokus auf Atmung', '200 m'],
-    ['Hauptteil: 6–8× 50 m zügig', '300–400 m'],
+    ['Technik: 4× 50 m mit Fokus auf Atmung und Wasserlage', '200 m'],
+    ['Hauptteil: 6–8× 50 m zügig, gleichmäßiges Tempo', '300–400 m'],
     ['Beine mit Brett', '100 m'],
     ['Ausschwimmen locker', '100 m'],
+  ]},
+  'schwimmen-intervall': { name: 'Schwimm-Intervalle', minutes: 40, rounds: 'Intensive Serie: 8× 50 m zügig mit 20–30 Sek. Pause – Tempo so, dass die letzte Bahn noch sauber ist', ex: [
+    ['Einschwimmen locker', '200 m'],
+    ['8× 50 m zügig, 20–30 Sek. Pause', '400 m'],
+    ['Technik locker (Kraul oder Brust)', '100 m'],
+    ['Ausschwimmen', '100 m'],
   ]},
 };
 
@@ -199,12 +224,17 @@ const WORKOUT_CATS = {
   'gym-push': () => GYM_PLANS.push,
   'gym-pull': () => GYM_PLANS.pull,
   'gym-ganzkoerper': () => GYM_PLANS.ganzkoerper,
+  'gym-ganzkoerper-b': () => GYM_PLANS.ganzkoerper2,
   'gym-ausdauer': () => GYM_PLANS.ausdauer,
   'gym-bauch': () => GYM_PLANS.bauch,
   'gym-sprungkraft': () => GYM_PLANS.sprungkraft,
   'cardio-joggen': () => CARDIO_PLANS.joggen,
+  'cardio-joggen-intervall': () => CARDIO_PLANS['joggen-intervall'],
+  'cardio-joggen-lang': () => CARDIO_PLANS['joggen-lang'],
   'cardio-radfahren': () => CARDIO_PLANS.radfahren,
+  'cardio-rad-intervall': () => CARDIO_PLANS['rad-intervall'],
   'cardio-schwimmen': () => CARDIO_PLANS.schwimmen,
+  'cardio-schwimmen-intervall': () => CARDIO_PLANS['schwimmen-intervall'],
   'paar-zirkel20': () => PAAR_WORKOUTS[0],
   'paar-sync20': () => PAAR_WORKOUTS[1],
   'paar-kraft30': () => PAAR_WORKOUTS[2],
@@ -255,41 +285,87 @@ function adaptWorkoutToGoal(cat, goal) {
 }
 
 /* Regelbasierter Plan-Generator – sofort und offline; die KI kann ihn verfeinern.
-   opts: { goal, freq, elements: [...], duration } */
+   opts: { goals: [...], freq, elements: [...], duration } – mehrere Ziele werden
+   proportional gemischt (z. B. Masse + Ausdauer bei 4×: 2 Kraft, 2 Cardio). */
 function buildTrainingPlan(opts) {
-  const { goal, freq, elements } = opts;
+  const { freq, elements } = opts;
+  const goals = (opts.goals && opts.goals.length ? opts.goals : [opts.goal || 'fit']);
   const has = e => elements.includes(e);
-  const pool = [];
-  // Übungs-Pool nach Ziel und gewählten Elementen aufbauen
-  if (goal === 'staerker' || goal === 'masse') {
-    if (has('gym')) pool.push('gym-push', 'gym-pull', 'gym-unterkoerper', 'gym-oberkoerper', 'gym-ganzkoerper');
-    if (has('home')) pool.push('home-ganzkoerper', 'home-beine', 'home-arme');
+
+  // Einheiten pro Ziel (round-robin, Summe = freq)
+  const counts = {};
+  goals.forEach(g => { counts[g] = 0; });
+  for (let i = 0; i < freq; i++) counts[goals[i % goals.length]]++;
+
+  /* Kraft: Split nach Frequenz – evidenzbasiert.
+     Jede Muskelgruppe ~2×/Woche treffen: bis 3 Einheiten Ganzkörper (A/B im Wechsel),
+     4 Einheiten Ober-/Unterkörper, erst ab 5–6 Push/Pull/Beine. */
+  const kraftSeq = n => {
+    if (has('gym')) {
+      const splits = {
+        1: ['gym-ganzkoerper'],
+        2: ['gym-ganzkoerper', 'gym-ganzkoerper-b'],
+        3: ['gym-ganzkoerper', 'gym-ganzkoerper-b', 'gym-ganzkoerper'],
+        4: ['gym-oberkoerper', 'gym-unterkoerper', 'gym-oberkoerper', 'gym-unterkoerper'],
+        5: ['gym-oberkoerper', 'gym-unterkoerper', 'gym-push', 'gym-pull', 'gym-unterkoerper'],
+        6: ['gym-push', 'gym-pull', 'gym-unterkoerper', 'gym-push', 'gym-pull', 'gym-unterkoerper'],
+        7: ['gym-push', 'gym-pull', 'gym-unterkoerper', 'gym-push', 'gym-pull', 'gym-unterkoerper', 'gym-ganzkoerper'],
+      };
+      return splits[Math.min(n, 7)].slice(0, n);
+    }
+    const rot = ['home-ganzkoerper', 'home-beine', 'home-arme', 'home-bauch'];
+    return Array.from({ length: n }, (_, i) => rot[i % rot.length]);
+  };
+
+  /* Ausdauer: 80/20 – maximal 1 intensive Intervalleinheit pro Woche,
+     der Rest locker (Zone 2), ab 3 Einheiten zusätzlich 1 lange Einheit. */
+  const ausdauerSeq = n => {
+    const modes = [];
+    if (has('joggen')) modes.push('joggen');
+    if (has('radfahren')) modes.push('rad');
+    if (has('schwimmen')) modes.push('schwimmen');
+    if (!modes.length) return Array.from({ length: n }, () => has('gym') ? 'gym-ausdauer' : 'home-ganzkoerper');
+    const locker = { joggen: 'cardio-joggen', rad: 'cardio-radfahren', schwimmen: 'cardio-schwimmen' };
+    const intervall = { joggen: 'cardio-joggen-intervall', rad: 'cardio-rad-intervall', schwimmen: 'cardio-schwimmen-intervall' };
+    const lang = { joggen: 'cardio-joggen-lang', rad: 'cardio-radfahren', schwimmen: 'cardio-schwimmen' };
+    const seq = [];
+    for (let i = 0; i < n; i++) {
+      const mode = modes[i % modes.length];
+      if (i === 0 && n >= 2) seq.push(intervall[mode]);        // die eine harte Einheit
+      else if (i === n - 1 && n >= 3) seq.push(lang[mode]);    // die lange lockere
+      else seq.push(locker[mode]);                             // Zone 2
+    }
+    return seq;
+  };
+
+  const beweglichSeq = n => Array.from({ length: n }, (_, i) => i % 2 ? 'home-yoga' : 'home-stretch');
+
+  const fitSeq = n => {
+    const kraft = has('gym') ? ['gym-ganzkoerper', 'gym-ganzkoerper-b'] : ['home-ganzkoerper', 'home-beine'];
+    const cardio = has('joggen') ? 'cardio-joggen' : has('radfahren') ? 'cardio-radfahren' : has('schwimmen') ? 'cardio-schwimmen' : has('gym') ? 'gym-ausdauer' : 'home-bauch';
+    return Array.from({ length: n }, (_, i) => i % 2 ? cardio : kraft[Math.floor(i / 2) % kraft.length]);
+  };
+
+  const seqFor = { staerker: kraftSeq, masse: kraftSeq, ausdauer: ausdauerSeq, beweglich: beweglichSeq, fit: fitSeq };
+  const goalSeqs = goals.map(g => (seqFor[g] || fitSeq)(counts[g]));
+
+  // Ziele verzahnen (hart/locker wechselt sich ab): Einheit i gehört zu Ziel i mod Anzahl-Ziele
+  const cats = [];
+  const cursors = goals.map(() => 0);
+  for (let i = 0; i < freq; i++) {
+    const gi = i % goals.length;
+    if (cursors[gi] < goalSeqs[gi].length) cats.push(goalSeqs[gi][cursors[gi]++]);
   }
-  if (goal === 'ausdauer') {
-    if (has('joggen')) pool.push('cardio-joggen');
-    if (has('radfahren')) pool.push('cardio-radfahren');
-    if (has('schwimmen')) pool.push('cardio-schwimmen');
-    if (has('gym')) pool.push('gym-ausdauer');
-    if (has('home')) pool.push('home-ganzkoerper');
+  // Rest auffüllen, falls ein Ziel keine Einheiten bekommen konnte
+  for (let gi = 0; gi < goals.length && cats.length < freq; gi++) {
+    while (cursors[gi] < goalSeqs[gi].length && cats.length < freq) cats.push(goalSeqs[gi][cursors[gi]++]);
   }
-  if (goal === 'beweglich') {
-    pool.push('home-stretch', 'home-yoga');
-    if (has('home')) pool.push('home-ganzkoerper');
-  }
-  if (goal === 'fit') {
-    if (has('gym')) pool.push('gym-ganzkoerper', 'gym-ausdauer');
-    if (has('home')) pool.push('home-ganzkoerper', 'home-bauch', 'home-beine');
-    if (has('joggen')) pool.push('cardio-joggen');
-    if (has('radfahren')) pool.push('cardio-radfahren');
-    if (has('schwimmen')) pool.push('cardio-schwimmen');
-  }
-  if (!pool.length) pool.push('home-ganzkoerper', 'home-bauch', 'cardio-joggen');
 
   // Trainingstage über die Woche verteilen (0 = Montag … 6 = Sonntag)
   const daymap = { 2: [1, 4], 3: [0, 2, 4], 4: [0, 1, 3, 5], 5: [0, 1, 2, 4, 5], 6: [0, 1, 2, 3, 4, 5], 7: [0, 1, 2, 3, 4, 5, 6] };
   const days = daymap[freq] || daymap[3];
   const weekly = days.map((day, i) => {
-    const cat = pool[i % pool.length];
+    const cat = cats[i] || 'home-ganzkoerper';
     const w = workoutByCat(cat);
     return { day, cat, title: w ? w.name : cat, minutes: w ? w.minutes : 30 };
   });
@@ -300,13 +376,24 @@ function buildTrainingPlan(opts) {
     slot.cat = 'paar-' + p.id; slot.title = p.name; slot.minutes = p.minutes;
   }
   const prog = {
-    staerker: 'Jede Woche etwas mehr Gewicht oder 1 Wiederholung mehr – Technik geht immer vor.',
-    masse: 'Sätze sauber bis nahe ans Muskelversagen, jede Woche minimal steigern, gut essen und schlafen.',
-    ausdauer: 'Jede Woche 5–10 % mehr Umfang; jede 4. Woche locker machen zum Erholen.',
-    beweglich: 'Täglich zählt: Lieber 10 Minuten regelmäßig als 1 Stunde selten.',
-    fit: 'Abwechslung ist der Plan: Kraft und Ausdauer im Wechsel, Pausentage ernst nehmen.',
+    staerker: 'Kraft: Jede Woche etwas mehr Gewicht oder 1 Wiederholung mehr – Technik geht immer vor.',
+    masse: 'Muskelaufbau: Sätze sauber bis nahe ans Muskelversagen, jede Woche minimal steigern, gut essen und schlafen.',
+    ausdauer: 'Ausdauer: Jede Woche 5–10 % mehr Umfang; jede 4. Woche locker machen zum Erholen.',
+    beweglich: 'Beweglichkeit: Lieber 10 Minuten regelmäßig als 1 Stunde selten.',
+    fit: 'Fitness: Kraft und Ausdauer im Wechsel, Pausentage ernst nehmen.',
   };
-  return { weekly, progression: prog[goal] || prog.fit };
+  return { weekly, progression: goals.map(g => prog[g] || '').filter(Boolean).join(' ') };
+}
+/* Ziele eines Plans (alt: plan.goal, neu: plan.goals) */
+function planGoals(plan) {
+  if (!plan) return [];
+  return plan.goals && plan.goals.length ? plan.goals : (plan.goal ? [plan.goal] : []);
+}
+/* Welches Ziel bestimmt die Gym-Wiederholungsbereiche? Kraft vor Masse vor Ausdauer. */
+function primaryGymGoal(plan) {
+  const gs = planGoals(plan);
+  for (const g of ['staerker', 'masse', 'ausdauer', 'fit']) if (gs.includes(g)) return g;
+  return null;
 }
 
 /* ---------- Kalenderbewusste Wochenplanung ----------
@@ -330,14 +417,49 @@ function trainingWeekEntries(person, monISO) {
   const ts = trainingState();
   return ts.week[monISO + ':' + person] || null;
 }
+/* Rückblick: Wie lief die Vorwoche? Fließt in die Planung der neuen Woche ein. */
+function trainingLastWeekStats(person, monISO) {
+  const prevMon = toISO(addDays(new Date(monISO + 'T12:00'), -7));
+  const entries = trainingState().week[prevMon + ':' + person];
+  if (!entries || !entries.length) return null;
+  const done = entries.filter(e => e.done).length;
+  return {
+    total: entries.length,
+    done,
+    extras: entries.filter(e => e.extra && e.done).length,
+    missedIntervall: entries.some(e => !e.done && e.cat.includes('intervall')),
+  };
+}
+/* Ausblick: Wie viele freie Abende hat die Person in einer Woche? */
+function trainingFreeEvenings(person, monISO) {
+  let free = 0;
+  for (let d = 0; d < 7; d++) {
+    if (!trainingEveningBusy(toISO(addDays(new Date(monISO + 'T12:00'), d)), person)) free++;
+  }
+  return free;
+}
+
 /* Einheiten des Plans auf die Woche legen: freie Abende bevorzugen,
-   Kraft-Einheiten nicht direkt hintereinander, Paar-Einheit ans Wochenende tendieren */
+   Kraft-Einheiten nicht direkt hintereinander, Paar-Einheit ans Wochenende tendieren.
+   Schlau: Lief die Vorwoche schlecht (≤ 50 %), wird eine Einheit weniger geplant –
+   dranbleiben schlägt Volumen. Eine verpasste Intervalleinheit rückt nach vorn. */
 function scheduleTrainingWeek(person, monISO) {
   const ts = trainingState();
   const key = monISO + ':' + person;
   if (ts.week[key]) return ts.week[key];
   const plan = ts.plans[person];
   if (!plan) return null;
+  const stats = trainingLastWeekStats(person, monISO);
+  let sessions = plan.weekly.slice();
+  if (stats && stats.total >= 2 && stats.done / stats.total <= 0.5 && sessions.length > 2) {
+    // Überforderung vermeiden: die letzte lockere Einheit dieser Woche streichen
+    const dropIdx = sessions.map((s, i) => ({ s, i })).reverse().find(x => !x.s.cat.includes('intervall') && workoutFamily(x.s.cat) !== 'paar');
+    sessions.splice(dropIdx ? dropIdx.i : sessions.length - 1, 1);
+  }
+  if (stats && stats.missedIntervall) {
+    // Verpasste harte Einheit zuerst einplanen
+    sessions.sort((a, b) => (b.cat.includes('intervall') ? 1 : 0) - (a.cat.includes('intervall') ? 1 : 0));
+  }
   const taken = new Set();
   const entries = [];
   const todayIdx = (() => {
@@ -345,7 +467,7 @@ function scheduleTrainingWeek(person, monISO) {
     for (let i = 0; i < 7; i++) if (toISO(addDays(new Date(monISO + 'T12:00'), i)) === t) return i;
     return -1;
   })();
-  for (const s of plan.weekly) {
+  for (const s of sessions) {
     let best = -1, bestScore = -Infinity;
     for (let d = 0; d < 7; d++) {
       if (taken.has(d)) continue;
@@ -355,7 +477,9 @@ function scheduleTrainingWeek(person, monISO) {
       if (d === s.day) score += 2;                                     // Wunsch-Rhythmus des Plans
       if (todayIdx >= 0 && d < todayIdx) score -= 6;                   // Vergangenheit meiden
       const fam = workoutFamily(s.cat);
+      const hart = c => workoutFamily(c) === 'kraft' || c.includes('intervall');
       if (fam === 'kraft' && entries.some(e => workoutFamily(e.cat) === 'kraft' && Math.abs(e.day - d) === 1)) score -= 2; // Regeneration
+      if (hart(s.cat) && entries.some(e => hart(e.cat) && Math.abs(e.day - d) === 1)) score -= 1; // harte Einheiten spreizen
       if (fam === 'paar' && d >= 4) score += 1;                        // Paar-Workout eher Richtung Wochenende
       if (score > bestScore) { bestScore = score; best = d; }
     }
@@ -400,6 +524,7 @@ function workoutCatForQuery(q) {
     [/oberkörper/, 'gym-oberkoerper'],
     [/unterkörper/, 'gym-unterkoerper'],
     [/sprung/, 'gym-sprungkraft'],
+    [/intervall/, 'cardio-joggen-intervall'],
     [/schwimm/, 'cardio-schwimmen'],
     [/rad|fahrrad|bike/, 'cardio-radfahren'],
     [/jogg|lauf|renn/, 'cardio-joggen'],
