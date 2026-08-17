@@ -2,7 +2,8 @@ name: Tägliche Erinnerungen
 
 on:
   schedule:
-    - cron: "0 5 * * *" # 07:00 Sommerzeit / 06:00 Winterzeit (Berlin)
+    - cron: "0 5 * * *"  # Morgens: 07:00 Sommerzeit / 06:00 Winterzeit (Berlin)
+    - cron: "0 17 * * *" # Abends: 19:00 Sommerzeit / 18:00 Winterzeit (Blick auf morgen)
   workflow_dispatch: {}
 
 jobs:

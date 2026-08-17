@@ -52,6 +52,26 @@ function toast(msg) {
   document.body.appendChild(d);
   setTimeout(() => d.remove(), 2000);
 }
+/* ---------- Partner benachrichtigen ---------- */
+function pingPartner(title, body) {
+  if (window.UZSync) UZSync.notifyPartner(title, (body || '').slice(0, 120));
+}
+/* Sammel-Push: viele kleine Änderungen (Einkauf, Kochplan …) werden zu EINER
+   Benachrichtigung gebündelt, damit der andere nicht zugespamt wird. */
+const _pingBatches = {};
+function pingBatched(key, title, item, delay = 20000) {
+  const b = _pingBatches[key] = _pingBatches[key] || { items: [] };
+  if (item) b.items.push(item);
+  b.title = title;
+  clearTimeout(b.timer);
+  b.timer = setTimeout(() => {
+    const items = b.items.filter(Boolean);
+    b.items = [];
+    const body = items.slice(0, 5).join(', ') + (items.length > 5 ? ' und mehr' : '');
+    pingPartner(b.title, body);
+  }, delay);
+}
+
 function whoChip(who) {
   const lbl = who === 'beide' ? 'Beide' : nameOf(who);
   return '<span class="chip ' + esc(who) + '">' + esc(lbl) + '</span>';
@@ -110,11 +130,6 @@ function updateBadge() {
     const n = unreadCount();
     n ? navigator.setAppBadge(n).catch(() => {}) : navigator.clearAppBadge().catch(() => {});
   }
-}
-
-/* Partner über eine Aktion informieren (Push, fire-and-forget) */
-function pingPartner(title, body) {
-  if (window.UZSync) UZSync.notifyPartner(title, body || '');
 }
 
 /* ---------- Home ---------- */
@@ -281,10 +296,16 @@ function openTodoSheet(id) {
 }
 
 function renderHaushalt() {
+  let html = `<div class="pagehead"><div><h1 class="page">Haushalt</h1><div class="sub">Aufgaben &amp; Finanzen</div></div>
+    <button class="iconbtn" data-action="add-task">${icon('plus', 19)}</button></div>
+  <div class="seg">
+    <button class="${state.haushalt !== 'finanzen' ? 'active' : ''}" data-action="hseg" data-v="aufgaben">Aufgaben</button>
+    <button class="${state.haushalt === 'finanzen' ? 'active' : ''}" data-action="hseg" data-v="finanzen">Finanzen</button>
+  </div>`;
+  if (state.haushalt === 'finanzen') return html + renderFinanzen();
+
   const open = DATA.tasks.filter(t => !taskIsDone(t));
   const done = DATA.tasks.filter(t => taskIsDone(t));
-  let html = `<div class="pagehead"><div><h1 class="page">Haushalt</h1><div class="sub">Wer macht was – fair im Wechsel</div></div>
-    <button class="iconbtn" data-action="add-task">${icon('plus', 19)}</button></div>`;
 
   html += `<h2 class="sect">Jetzt fällig</h2>`;
   const tdOf = p => DATA.todos.filter(t => !t.done && (t.who || 'beide') === p);
@@ -374,8 +395,61 @@ function openTaskSheet(id) {
   `);
 }
 
+/* ---------- Finanzen: wer hat was ausgelegt? ---------- */
+function renderFinanzen() {
+  const open = (DATA.expenses || []).filter(e => !e.settled);
+  const settled = (DATA.expenses || []).filter(e => e.settled).slice(-8).reverse();
+  const net = expenseBalance();
+  let balanceHtml;
+  if (Math.abs(net) < 0.005) {
+    balanceHtml = '<div class="num" style="font-size:22px">Ihr seid quitt</div><div class="lbl">nichts offen</div>';
+  } else {
+    const schuldner = net > 0 ? 'Linda' : 'Stefan';
+    const glaeubiger = net > 0 ? 'Stefan' : 'Linda';
+    balanceHtml = `<div class="num">${fmtEuro(Math.abs(net))}</div><div class="lbl">bekommt <b>${glaeubiger}</b> von <b>${schuldner}</b></div>`;
+  }
+  let html = `<div class="card" style="text-align:center;padding:18px">${balanceHtml}</div>
+
+  <h2 class="sect">Ausgabe eintragen</h2>
+  <div class="card">
+    <div class="frow">
+      <div><label class="f">Betrag (€)</label><input class="f" id="expAmount" type="number" inputmode="decimal" step="0.01" min="0" placeholder="0,00"></div>
+      <div><label class="f">Bezahlt von</label>
+        <select class="f" id="expWho">
+          <option value="stefan" ${me() === 'stefan' ? 'selected' : ''}>Stefan</option>
+          <option value="linda" ${me() === 'linda' ? 'selected' : ''}>Linda</option>
+        </select></div>
+    </div>
+    <label class="f">Wofür?</label>
+    <input class="f" id="expTitle" placeholder="z. B. Wocheneinkauf, Pizza, Drogerie …">
+    <button class="btn full" style="margin-top:12px" data-action="exp-add">Eintragen (wird 50/50 geteilt)</button>
+  </div>
+
+  <h2 class="sect">Offene Ausgaben</h2>`;
+  if (open.length) {
+    for (const e of open.slice().reverse()) {
+      html += `<div class="row" style="border-left:4px solid ${e.paidBy === 'stefan' ? 'var(--olive)' : 'var(--clay)'}">
+        <div class="grow"><div class="title">${esc(e.title)}</div>
+        <div class="meta">${esc(fmtShort(e.date))} · ${esc(nameOf(e.paidBy))} hat bezahlt</div></div>
+        <b style="white-space:nowrap">${fmtEuro(e.amount)}</b>
+        <button class="check" data-action="exp-del" data-id="${e.id}" style="border-color:#E0C4B8;color:#A54B32">${icon('x', 13)}</button>
+      </div>`;
+    }
+    html += `<button class="btn full" style="margin-top:8px" data-action="exp-settle-open">Ausgleichen &amp; abhaken</button>`;
+  } else {
+    html += `<div class="card"><div class="hint">Keine offenen Ausgaben. Trag ein, was jemand ausgelegt hat – die App rechnet automatisch 50/50.</div></div>`;
+  }
+  if (settled.length) {
+    html += `<div class="cathead">Beglichen (zuletzt)</div>`;
+    for (const e of settled) {
+      html += `<div class="row done"><div class="grow"><div class="title">${esc(e.title)}</div><div class="meta">${esc(fmtShort(e.date))} · ${esc(nameOf(e.paidBy))}</div></div><span class="mut">${fmtEuro(e.amount)}</span></div>`;
+    }
+  }
+  return html;
+}
+
 /* ---------- Kalender ---------- */
-const WHO_COLOR = w => w === 'linda' ? 'var(--clay)' : w === 'stefan' ? 'var(--olive)' : '#3E7C7B';
+const WHO_COLOR = w => w === 'linda' ? '#E02D2D' : w === 'stefan' ? '#1E1E1E' : '#F5B301';
 
 function calLegend() {
   return `<div class="legend">
@@ -387,12 +461,16 @@ function calLegend() {
 }
 
 function calEvRow(e, compact) {
-  return `<div class="row" style="border-left:4px solid ${WHO_COLOR(e.who)};${compact ? 'padding:9px 12px;margin-bottom:6px' : ''}">
-    <span class="ric">${icon(e.src === 'ics' ? 'case' : 'cal', compact ? 16 : 18)}</span>
-    <div class="grow" ${e.src !== 'ics' ? 'data-action="edit-event" data-id="' + e.id + '"' : ''}><div class="title" ${compact ? 'style="font-size:14px"' : ''}>${esc(e.title)}</div>
-    <div class="meta">${e.time ? esc(e.time) + ' Uhr · ' : ''}${e.src === 'ics' ? 'Outlook-Termin' : 'eingetragen'} · ${e.who === 'beide' ? 'gemeinsam' : esc(nameOf(e.who))}${e.repeat ? ' · ↻ ' + REPEAT_LABEL[e.repeat] : ''}</div></div>
+  const borderColor = e.src === 'special' ? '#B98A3D' : WHO_COLOR(e.who);
+  const ic = e.src === 'special' ? 'star' : e.src === 'ics' ? 'case' : 'cal';
+  const quelle = e.src === 'special' ? 'besonderer Tag' : e.src === 'ics' ? 'Outlook-Termin' : 'eingetragen';
+  const editable = !e.src;
+  return `<div class="row" style="border-left:4px solid ${borderColor};${compact ? 'padding:9px 12px;margin-bottom:6px' : ''}">
+    <span class="ric" ${e.src === 'special' ? 'style="color:#B98A3D"' : ''}>${icon(ic, compact ? 16 : 18)}</span>
+    <div class="grow" ${editable ? 'data-action="edit-event" data-id="' + e.id + '"' : ''}><div class="title" ${compact ? 'style="font-size:14px"' : ''}>${esc(e.title)}</div>
+    <div class="meta">${e.time ? esc(e.time) + ' Uhr · ' : ''}${quelle} · ${e.who === 'beide' ? 'gemeinsam' : esc(nameOf(e.who))}${e.repeat ? ' · ↻ ' + REPEAT_LABEL[e.repeat] : ''}</div></div>
     ${whoChip(e.who)}
-    ${e.src !== 'ics' ? '<button class="check" data-action="del-event" data-id="' + e.id + '" style="border-color:#E0C4B8;color:#A54B32">' + icon('x', 13) + '</button>' : ''}
+    ${editable ? '<button class="check" data-action="del-event" data-id="' + e.id + '" style="border-color:#E0C4B8;color:#A54B32">' + icon('x', 13) + '</button>' : ''}
   </div>`;
 }
 
@@ -706,17 +784,17 @@ function openRecipeSheet(id) {
     </div>
   `);
 }
-function openAddRecipeSheet(id) {
-  const r = id ? DATA.recipes.find(x => x.id === id) : null;
+function openAddRecipeSheet(id, draft) {
+  const r = id ? DATA.recipes.find(x => x.id === id) : (draft || null);
   openSheet(`
-    <h2>${r ? 'Rezept bearbeiten' : 'Neues Rezept'}</h2>
+    <h2>${id ? 'Rezept bearbeiten' : draft ? 'KI-Rezept anpassen' : 'Neues Rezept'}</h2>
     <label class="f">Name</label>
     <input class="f" id="rcName" value="${r ? esc(r.name) : ''}" placeholder="z. B. Lasagne">
     <label class="f">Zutaten (eine pro Zeile)</label>
-    <textarea class="f" id="rcIng" placeholder="Lasagneplatten&#10;Hackfleisch&#10;Passierte Tomaten">${r ? esc(r.ing.join('\n')) : ''}</textarea>
+    <textarea class="f" id="rcIng" placeholder="Lasagneplatten&#10;Hackfleisch&#10;Passierte Tomaten">${r ? esc((r.ing || []).join('\n')) : ''}</textarea>
     <label class="f">Zubereitung (optional – wie macht ihr's?)</label>
     <textarea class="f" id="rcHow" style="min-height:110px" placeholder="1. Ofen vorheizen …&#10;2. …">${r && r.anleitung ? esc(r.anleitung) : ''}</textarea>
-    <div style="margin-top:14px"><button class="btn full" data-action="save-recipe" data-id="${r ? r.id : ''}">Speichern</button></div>
+    <div style="margin-top:14px"><button class="btn full" data-action="save-recipe" data-id="${id || ''}">Speichern</button></div>
   `);
 }
 
@@ -727,6 +805,21 @@ function renderUns() {
   html += `<div class="card olive" data-action="plan-datenight">
     <h3 style="display:flex;align-items:center;gap:8px">${icon('moon', 18)} Date-Night planen</h3>
     <div class="sub">Abend aussuchen, Idee würfeln, Essen einplanen – fertig.</div>
+  </div>`;
+
+  html += `<h2 class="sect">Verbundenheit</h2>
+  <div class="card sand">
+    <div class="hint" style="font-size:11px;font-weight:800;letter-spacing:0.08em;text-transform:uppercase;color:var(--olive);margin-bottom:6px">Gesprächsfrage des Tages</div>
+    <div style="font-family:var(--serif);font-style:italic;font-size:16.5px;line-height:1.45">${esc(dailyCoupleQuestion())}</div>
+    <div class="hint" style="margin-top:8px">Beim Abendessen stellen – und wirklich zuhören.</div>
+  </div>`;
+  const myCi = checkinOf(me()), paCi = checkinOf(partner());
+  html += `<div class="card" data-action="checkin-open" style="cursor:pointer">
+    <div style="display:flex;align-items:center;justify-content:space-between">
+      <h3>Wochen-Check-in</h3>
+      <span class="chip ${myCi ? 'stefan' : 'ghost'}">Du ${myCi ? '✓' : '–'}</span>
+    </div>
+    <div class="sub" style="margin-top:4px">3 kleine Fragen, einmal pro Woche – füreinander. ${paCi ? esc(nameOf(partner())) + ' hat schon ausgefüllt.' : ''}</div>
   </div>`;
 
   html += `<h2 class="sect">Besondere Tage <span class="more" data-action="add-usdate">hinzufügen</span></h2>`;
@@ -762,6 +855,30 @@ function renderUns() {
   });
   return html;
 }
+function openCheckinSheet() {
+  const mi = checkinOf(me()) || { schoen: '', schwer: '', wunsch: '' };
+  const pa = checkinOf(partner());
+  const paBlock = pa
+    ? `<div class="card sand" style="margin-bottom:12px">
+        <div class="hint" style="font-weight:800;text-transform:uppercase;letter-spacing:0.06em;font-size:11px;margin-bottom:6px">${esc(nameOf(partner()))}s Woche</div>
+        ${pa.schoen ? '<div style="margin-bottom:6px"><b>Schön war:</b> ' + esc(pa.schoen) + '</div>' : ''}
+        ${pa.schwer ? '<div style="margin-bottom:6px"><b>Schwierig war:</b> ' + esc(pa.schwer) + '</div>' : ''}
+        ${pa.wunsch ? '<div><b>Wünscht sich:</b> ' + esc(pa.wunsch) + '</div>' : ''}
+      </div>`
+    : `<div class="mut" style="margin-bottom:10px">${esc(nameOf(partner()))} hat diese Woche noch nicht ausgefüllt.</div>`;
+  openSheet(`
+    <h2>Wochen-Check-in</h2>
+    ${paBlock}
+    <label class="f">Was war diese Woche schön?</label>
+    <textarea class="f" id="ciSchoen" style="min-height:64px">${esc(mi.schoen)}</textarea>
+    <label class="f">Was war schwierig?</label>
+    <textarea class="f" id="ciSchwer" style="min-height:64px">${esc(mi.schwer)}</textarea>
+    <label class="f">Was wünschst du dir für nächste Woche?</label>
+    <textarea class="f" id="ciWunsch" style="min-height:64px">${esc(mi.wunsch)}</textarea>
+    <div style="margin-top:14px"><button class="btn full" data-action="checkin-save">Speichern</button></div>
+  `);
+}
+
 function nextOccurrence(iso) {
   const t = fromISO(todayISO());
   let d = fromISO(iso);
@@ -1004,17 +1121,77 @@ function handleAction(a, el) {
       }
       break;
     }
-    case 'del-event': DATA.events = DATA.events.filter(x => x.id !== id); save(); render(); break;
-    case 'del-event-sheet': DATA.events = DATA.events.filter(x => x.id !== id); save(); closeSheet(); render(); toast('Termin gelöscht'); break;
+    case 'del-event': case 'del-event-sheet': {
+      const ev = DATA.events.find(x => x.id === id);
+      DATA.events = DATA.events.filter(x => x.id !== id);
+      save();
+      if (a === 'del-event-sheet') closeSheet();
+      render();
+      if (ev && ev.who !== me()) pingPartner('Termin gelöscht', ev.title + ' · ' + fmtShort(ev.date));
+      if (a === 'del-event-sheet') toast('Termin gelöscht');
+      break;
+    }
     case 'ics-refresh': refreshIcs(false); break;
 
     /* Küche */
     case 'kseg': state.kueche = el.dataset.v; render(); break;
+    case 'hseg': state.haushalt = el.dataset.v; render(); break;
     case 'presence-open': openPresenceSheet(); break;
     case 'presence-toggle':
       setPresence(el.dataset.iso, me(), el.dataset.slot, !isPresent(el.dataset.iso, me(), el.dataset.slot));
+      pingBatched('presence', nameOf(me()) + ' hat den „Wer ist wann da“-Plan aktualisiert', null, 30000);
       openPresenceSheet();
       break;
+
+    /* Finanzen */
+    case 'exp-add': {
+      const amount = parseFloat((document.getElementById('expAmount').value || '').replace(',', '.'));
+      const title = document.getElementById('expTitle').value.trim() || 'Ausgabe';
+      const paidBy = document.getElementById('expWho').value;
+      if (!amount || amount <= 0) { toast('Bitte einen Betrag eingeben'); break; }
+      if (!DATA.expenses) DATA.expenses = [];
+      DATA.expenses.push({ id: uid(), title, amount: Math.round(amount * 100) / 100, paidBy, date: todayISO(), settled: false });
+      save(); render();
+      pingPartner(nameOf(paidBy) + ' hat ' + fmtEuro(amount) + ' ausgelegt', title);
+      toast('Eingetragen – ' + fmtEuro(amount / 2) + ' pro Person');
+      break;
+    }
+    case 'exp-del': DATA.expenses = DATA.expenses.filter(e => e.id !== id); save(); render(); break;
+    case 'exp-settle-open': {
+      const net = expenseBalance();
+      const text = Math.abs(net) < 0.005
+        ? 'Ihr seid ausgeglichen – die offenen Einträge werden nur abgehakt.'
+        : (net > 0 ? 'Linda' : 'Stefan') + ' zahlt ' + (net > 0 ? 'Stefan' : 'Linda') + ' <b>' + fmtEuro(Math.abs(net)) + '</b> – danach hier abhaken.';
+      openSheet(`<h2>Ausgleichen</h2>
+        <p style="font-size:15px">${text}</p>
+        <div class="frow" style="margin-top:14px">
+          <button class="btn ghost" data-action="close-sheet">Abbrechen</button>
+          <button class="btn" style="flex:1" data-action="exp-settle">Beglichen ✓</button>
+        </div>`);
+      break;
+    }
+    case 'exp-settle': {
+      const now = new Date().toISOString();
+      (DATA.expenses || []).forEach(e => { if (!e.settled) { e.settled = true; e.settledAt = now; } });
+      save(); closeSheet(); render();
+      pingPartner('Finanzen ausgeglichen', 'Alle offenen Ausgaben sind abgehakt');
+      toast('Alles beglichen');
+      break;
+    }
+
+    /* Verbundenheit */
+    case 'checkin-open': openCheckinSheet(); break;
+    case 'checkin-save': {
+      saveCheckin(me(), {
+        schoen: document.getElementById('ciSchoen').value.trim(),
+        schwer: document.getElementById('ciSchwer').value.trim(),
+        wunsch: document.getElementById('ciWunsch').value.trim(),
+      });
+      closeSheet(); render();
+      pingPartner('Wochen-Check-in', nameOf(me()) + ' hat geteilt, wie die Woche war – schau mal rein');
+      toast('Gespeichert');
+      break;
+    }
     case 'meal-slot': openMealSheet(el.dataset.iso, el.dataset.slot); break;
     case 'meal-set': {
       const slot = el.dataset.slot || 'a';
@@ -1059,7 +1236,11 @@ function handleAction(a, el) {
     }
     case 'meal-shop': {
       const r = DATA.recipes.find(x => x.id === el.dataset.rid);
-      if (r) { addRecipeToShopping(r); closeSheet(); toast('Zutaten auf der Liste'); render(); }
+      if (r) {
+        addRecipeToShopping(r);
+        pingBatched('shop', 'Einkaufsliste ergänzt', 'Zutaten für ' + r.name);
+        closeSheet(); toast('Zutaten auf der Liste'); render();
+      }
       break;
     }
     case 'ing-toggle': el.classList.toggle('on'); break;
@@ -1073,7 +1254,10 @@ function handleAction(a, el) {
       const chosen = rows.filter(x => x.querySelector('.check.on')).map(x => x.dataset.ingName);
       if (!chosen.length) { toast('Nichts ausgewählt'); break; }
       let added = 0, dup = 0;
-      chosen.forEach(n => { addShoppingItem(n) === 'exists' ? dup++ : added++; });
+      chosen.forEach(n => {
+        if (addShoppingItem(n) === 'exists') dup++;
+        else { added++; pingBatched('shop', 'Einkaufsliste ergänzt', n); }
+      });
       closeSheet(); render();
       toast(added + ' auf der Liste' + (dup ? ' · ' + dup + ' war(en) schon drauf' : ''));
       break;
@@ -1081,8 +1265,10 @@ function handleAction(a, el) {
     case 'shop-add': {
       const inp = document.getElementById('shopInput');
       if (inp.value.trim()) {
-        const res = addShoppingItem(inp.value);
+        const name = inp.value.trim();
+        const res = addShoppingItem(name);
         if (res === 'exists') toast('Steht schon auf der Liste');
+        else pingBatched('shop', 'Einkaufsliste ergänzt', name);
         render(); document.getElementById('shopInput').focus();
       }
       break;
@@ -1107,6 +1293,7 @@ function handleAction(a, el) {
       break;
     }
     case 'edit-recipe': openAddRecipeSheet(id); break;
+    case 'ai-recipe-edit': openAddRecipeSheet(null, state._aiRecipe); break;
     case 'ai-howto': {
       const r = DATA.recipes.find(x => x.id === id);
       if (!r) break;
@@ -1139,9 +1326,12 @@ function handleAction(a, el) {
           openSheet(`<h2>${esc(rec.name)}</h2>
             ${rec.ing.map(i => '<div class="row"><div class="grow"><div class="title" style="font-weight:500">' + esc(i) + '</div><div class="meta">' + esc(guessCat(i)) + '</div></div></div>').join('')}
             ${rec.anleitung ? '<h2 style="font-size:17px;margin:14px 0 8px">Zubereitung</h2><div class="card" style="white-space:pre-wrap;font-size:14.5px;line-height:1.5">' + esc(rec.anleitung) + '</div>' : ''}
-            <div style="margin-top:12px;display:flex;gap:8px">
-              <button class="btn ghost" data-action="ai-recipe-go">Anderer Vorschlag</button>
-              <button class="btn" style="flex:1" data-action="ai-recipe-save">Speichern</button>
+            <div style="margin-top:12px;display:flex;flex-direction:column;gap:8px">
+              <button class="btn full" data-action="ai-recipe-save">Speichern</button>
+              <div class="frow">
+                <button class="btn ghost small" data-action="ai-recipe-go">Anderer Vorschlag</button>
+                <button class="btn ghost small" data-action="ai-recipe-edit">Anpassen</button>
+              </div>
             </div>`);
         })
         .catch(e => {
@@ -1395,6 +1585,19 @@ function handleAction(a, el) {
         });
         save(); closeSheet(); state.tab = 'haushalt'; render(); toast('Aufgabe angelegt');
       }
+      break;
+    }
+    case 'voice-add-expense': {
+      const amount = parseFloat((document.getElementById('vxAmount').value || '').replace(',', '.'));
+      const title = document.getElementById('vxTitle').value.trim() || 'Ausgabe';
+      const paidBy = document.getElementById('vxWho').value;
+      if (!amount || amount <= 0) { toast('Bitte einen Betrag eingeben'); break; }
+      if (!DATA.expenses) DATA.expenses = [];
+      DATA.expenses.push({ id: uid(), title, amount: Math.round(amount * 100) / 100, paidBy, date: todayISO(), settled: false });
+      save(); closeSheet();
+      state.tab = 'haushalt'; state.haushalt = 'finanzen'; render();
+      pingPartner(nameOf(paidBy) + ' hat ' + fmtEuro(amount) + ' ausgelegt', title);
+      toast('Eingetragen – ' + fmtEuro(amount / 2) + ' pro Person');
       break;
     }
     case 'voice-add-recipe': {

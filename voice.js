@@ -159,6 +159,7 @@ async function understandVoice(text) {
       if (a.kind === 'note' && a.title) return confirmVoice({ kind: 'note', text: a.title });
       if (a.kind === 'idea' && a.title) return confirmVoice({ kind: 'idea', text: a.title });
       if (a.kind === 'chore' && a.title) return confirmVoice({ kind: 'chore', title: a.title, freq: a.freq || 'weekly', who: a.who || 'beide' });
+      if (a.kind === 'expense' && a.amount) return confirmVoice({ kind: 'expense', amount: a.amount, title: a.title || 'Ausgabe', who: (a.who === 'stefan' || a.who === 'linda') ? a.who : me() });
       if (a.kind === 'recipe' && a.title) return confirmVoice({ kind: 'recipe', name: a.title, ing: a.items || [] });
       if (a.kind === 'meal' && a.dish) return confirmVoice({ kind: 'meal', date: a.date || todayISO(), dish: a.dish, items: a.items || [] });
       if (a.kind === 'event' && a.title) return confirmVoice({ kind: 'event', date: a.date || todayISO(), time: a.time || '', title: a.title, who: a.who || 'beide' });
@@ -209,6 +210,21 @@ function confirmVoice(p) {
       <h2>Date-Idee speichern?</h2>
       <input class="f" id="viIdea" value="${esc(p.text)}">
       <div style="margin-top:14px"><button class="btn full" data-action="voice-add-idea">Auf die Ideenliste</button></div>
+    `);
+  } else if (p.kind === 'expense') {
+    openSheet(`
+      <h2>Ausgabe eintragen?</h2>
+      <div class="frow">
+        <div><label class="f">Betrag (€)</label><input class="f" id="vxAmount" type="number" inputmode="decimal" step="0.01" value="${esc(String(p.amount).replace(',', '.'))}"></div>
+        <div><label class="f">Bezahlt von</label>
+          <select class="f" id="vxWho">
+            <option value="stefan" ${p.who === 'stefan' ? 'selected' : ''}>Stefan</option>
+            <option value="linda" ${p.who === 'linda' ? 'selected' : ''}>Linda</option>
+          </select></div>
+      </div>
+      <label class="f">Wofür?</label>
+      <input class="f" id="vxTitle" value="${esc(p.title)}">
+      <div style="margin-top:14px"><button class="btn full" data-action="voice-add-expense">Eintragen (50/50)</button></div>
     `);
   } else if (p.kind === 'chore') {
     openSheet(`

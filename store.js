@@ -83,6 +83,8 @@ const SEED = {
   meals: {},
   presence: {},
   shopping: [],
+  expenses: [],
+  checkins: {},
   us: {
     ideas: ['Picknick am Fluss', 'Zusammen Sushi selber machen', 'Abendspaziergang und ein Eis', 'Brettspielabend', 'Fotodate in der Stadt'],
     bucket: ['Ein Wochenende nach Südtirol', 'Töpferkurs zusammen machen'],
@@ -166,7 +168,11 @@ function eventsOn(iso) {
     .filter(e => e.repeat ? repeatMatches(e, iso) : e.date === iso)
     .map(e => e.repeat ? { ...e, date: iso } : e);
   const ics = DATA.icsEvents.filter(e => e.date === iso);
-  return own.concat(ics).sort((a, b) => (a.time || '99') < (b.time || '99') ? -1 : 1);
+  // Besondere Tage (Jahrestage etc.) erscheinen jedes Jahr im Kalender
+  const specials = ((DATA.us && DATA.us.dates) || [])
+    .filter(d => d.date && d.date.slice(5) === iso.slice(5))
+    .map(d => ({ id: 'ud-' + d.id, title: d.title, date: iso, time: '', who: 'beide', src: 'special' }));
+  return specials.concat(own.concat(ics).sort((a, b) => (a.time || '99') < (b.time || '99') ? -1 : 1));
 }
 function nextEvents(n = 3) {
   const out = [];
@@ -324,6 +330,65 @@ function markChatRead() {
     DATA.reads[me()] = new Date().toISOString();
     save();
   }
+}
+
+/* ---------- Kosten: 50/50-Aufteilung ---------- */
+function fmtEuro(n) { return n.toFixed(2).replace('.', ',') + ' €'; }
+function expenseBalance() {
+  // > 0: Linda schuldet Stefan; < 0: Stefan schuldet Linda
+  return (DATA.expenses || [])
+    .filter(e => !e.settled)
+    .reduce((s, e) => s + (e.paidBy === 'stefan' ? e.amount : -e.amount) / 2, 0);
+}
+
+/* ---------- Verbundenheit: Frage des Tages & Wochen-Check-in ---------- */
+const COUPLE_QUESTIONS = [
+  'Was war dein schönster Moment mit mir in letzter Zeit?',
+  'Wobei fühlst du dich von mir am meisten gesehen?',
+  'Was würdest du gern mal wieder zusammen machen, das wir lange nicht gemacht haben?',
+  'Wofür bist du mir gerade dankbar – auch wenn es klein ist?',
+  'Was wünschst du dir diese Woche von mir?',
+  'Wann hast du dich zuletzt so richtig lebendig gefühlt?',
+  'Was hat dich diese Woche zum Lachen gebracht?',
+  'Welche kleine Geste von mir bedeutet dir am meisten?',
+  'Worauf freust du dich gerade am meisten?',
+  'Was beschäftigt dich im Moment, worüber wir noch nicht gesprochen haben?',
+  'Wie kann ich dich unterstützen, wenn du gestresst bist?',
+  'Was war dein Lieblingsmoment aus unserem ersten gemeinsamen Jahr?',
+  'Welchen Traum würdest du gern mal zusammen angehen?',
+  'Was hast du Neues über dich gelernt in letzter Zeit?',
+  'Wo würdest du mit mir hinreisen, wenn alles möglich wäre?',
+  'Was macht unser Zuhause für dich zu einem Zuhause?',
+  'Wann fühlst du dich mir am nächsten?',
+  'Welche Gewohnheit von uns beiden magst du am liebsten?',
+  'Was möchtest du in einem Jahr über uns sagen können?',
+  'Was hat dich an mir überrascht, seit wir zusammen wohnen?',
+  'Welches Essen verbindest du mit einer schönen Erinnerung an uns?',
+  'Was brauchst du nach einem anstrengenden Tag am meisten?',
+  'Worin bin ich dir ein Vorbild?',
+  'Was würdest du unserem jüngeren Ich raten?',
+  'Welche Musik passt gerade zu deinem Leben?',
+  'Was gibt dir in stressigen Zeiten Halt?',
+  'Welchen Ort möchtest du mir unbedingt mal zeigen?',
+  'Was war eine Herausforderung, die uns stärker gemacht hat?',
+  'Wie sieht für dich ein perfekter gemeinsamer Sonntag aus?',
+  'Wofür möchtest du dir selbst öfter Zeit nehmen?',
+];
+function dailyCoupleQuestion() {
+  const d = new Date();
+  const start = Date.UTC(d.getFullYear(), 0, 0);
+  const doy = Math.floor((Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()) - start) / 864e5);
+  return COUPLE_QUESTIONS[(doy * 7 + 3) % COUPLE_QUESTIONS.length];
+}
+function weekKey() { return 'w' + toISO(startOfWeek(new Date())); }
+function checkinOf(person) {
+  return (DATA.checkins && DATA.checkins[weekKey()] && DATA.checkins[weekKey()][person]) || null;
+}
+function saveCheckin(person, answers) {
+  if (!DATA.checkins) DATA.checkins = {};
+  if (!DATA.checkins[weekKey()]) DATA.checkins[weekKey()] = {};
+  DATA.checkins[weekKey()][person] = answers;
+  save();
 }
 
 /* ---------- Einkauf ---------- */
