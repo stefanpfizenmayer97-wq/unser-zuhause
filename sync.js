@@ -117,10 +117,13 @@ window.UZSync = (() => {
     DATA.settings = DATA.settings || {};
     DATA.settings.me = meKeep;
     if (typeof cleanupHolidayIcs === 'function') cleanupHolidayIcs();
+    // Basis-Rezepte wieder ergänzen, falls der Cloud-Stand sie noch nicht kennt
+    const migrated = typeof ensureBaseRecipes === 'function' && ensureBaseRecipes();
     DATA._syncedAt = ts;
     localStorage.setItem(DB_KEY, JSON.stringify(DATA));
     if (typeof render === 'function') render();
     applyingRemote = false;
+    if (migrated) schedulePush();
   }
 
   async function push() {

@@ -189,7 +189,7 @@ function renderHome() {
   html += `<h2 class="sect">Auf einen Blick</h2>
   <div class="stat">
     <div class="card" data-action="go-haushalt"><div class="num">${dueMine.length}</div><div class="lbl">Aufgaben für dich</div></div>
-    <div class="card" data-action="go-einkauf"><div class="num">${shopOpen}</div><div class="lbl">auf der Liste</div></div>
+    <div class="card" data-action="go-einkauf"><div class="num">${shopOpen}</div><div class="lbl">auf der Einkaufsliste</div></div>
     <div class="card" data-action="go-kalender"><div class="num">${next ? Math.max(0, daysUntil(next.date)) : '–'}</div><div class="lbl">${next ? 'Tage bis „' + esc(next.title.slice(0, 14)) + '“' : 'keine Termine'}</div></div>
   </div>`;
 
@@ -709,7 +709,7 @@ function openMealSheet(iso, slot) {
   const m = mealAt(iso, slot);
   const lbl = slot === 'm' ? 'Mittagessen' : 'Abendessen';
   const recipeRows = DATA.recipes.slice().sort((a, b) => a.name.localeCompare(b.name, 'de')).map(r =>
-    `<div class="row" data-action="meal-set" data-iso="${iso}" data-slot="${slot}" data-rid="${r.id}" data-meal-row data-search="${esc((r.name + ' ' + r.ing.join(' ')).toLowerCase())}">
+    `<div class="row" data-action="meal-preview" data-iso="${iso}" data-slot="${slot}" data-rid="${r.id}" data-meal-row data-search="${esc((r.name + ' ' + r.ing.join(' ')).toLowerCase())}">
       <span class="ric">${icon('pot', 18)}</span>
       <div class="grow"><div class="title">${esc(r.name)}</div><div class="meta">${r.ing.length} Zutaten</div></div>
     </div>`).join('');
@@ -723,6 +723,27 @@ function openMealSheet(iso, slot) {
     <label class="f">Gericht wählen</label>
     <input class="f" id="mealSearch" placeholder="Suchen … (z. B. Pasta, Kürbis, Feta)" autocomplete="off" style="margin-bottom:10px">
     ${recipeRows}
+  `);
+}
+
+/* Vorschau eines Gerichts, bevor es in den Kochplan wandert */
+function openMealPreviewSheet(iso, slot, rid) {
+  const r = DATA.recipes.find(x => x.id === rid);
+  if (!r) { openMealSheet(iso, slot); return; }
+  const lbl = slot === 'm' ? 'Mittagessen' : 'Abendessen';
+  openSheet(`
+    <h2>${esc(r.name)}</h2>
+    <p class="mut">${esc(fmtNice(iso))} · ${lbl}</p>
+    <div class="cathead">Zutaten</div>
+    ${r.ing.map(i => '<div class="row"><span class="ric">' + icon('cart', 16) + '</span><div class="grow"><div class="title">' + esc(i) + '</div></div></div>').join('')}
+    <div class="cathead">Zubereitung</div>
+    ${r.anleitung
+      ? '<div class="card" style="white-space:pre-line;font-size:14px;line-height:1.55">' + esc(r.anleitung) + '</div>'
+      : '<p class="mut">Noch keine Anleitung hinterlegt – unter Rezepte kann die KI eine schreiben.</p>'}
+    <div style="margin-top:14px;display:flex;flex-direction:column;gap:8px">
+      <button class="btn full" data-action="meal-set" data-iso="${iso}" data-slot="${slot}" data-rid="${r.id}">Für ${esc(fmtShort(iso))} auswählen</button>
+      <button class="btn ghost full" data-action="meal-back" data-iso="${iso}" data-slot="${slot}">Zurück zur Auswahl</button>
+    </div>
   `);
 }
 
@@ -809,7 +830,7 @@ function renderUns() {
   </div>`;
 
   const [q1, q2] = dailyCoupleQuestions();
-  const mission = weeklyMission();
+  const mission = currentMission();
   html += `<h2 class="sect">Verbundenheit</h2>
   <div class="card sand">
     <div class="hint" style="font-size:11px;font-weight:800;letter-spacing:0.08em;text-transform:uppercase;color:var(--olive);margin-bottom:6px">Gesprächsfragen des Tages</div>
@@ -818,10 +839,12 @@ function renderUns() {
     <div class="hint" style="margin-top:8px">Beim Abendessen stellen – und wirklich zuhören.</div>
   </div>
   <div class="card" style="border-left:4px solid #B98A3D">
-    <div class="hint" style="font-size:11px;font-weight:800;letter-spacing:0.08em;text-transform:uppercase;color:#B98A3D;margin-bottom:6px">Mission der Woche · ${esc(nameOf(mission.wer))} bereitet vor</div>
+    <div class="hint" style="font-size:11px;font-weight:800;letter-spacing:0.08em;text-transform:uppercase;color:#B98A3D;margin-bottom:6px">Mission · ${esc(nameOf(mission.wer))} bereitet vor · alle 2 Wochen</div>
     ${mission.wer === me()
-      ? '<div style="font-size:15px;line-height:1.45">' + esc(mission.task) + '</div><div class="hint" style="margin-top:8px">Deine geheime Mission – ' + esc(nameOf(partner())) + ' sieht sie nicht. Pssst.</div>'
-      : '<div style="font-size:15px;line-height:1.45">' + esc(nameOf(mission.wer)) + ' hat diese Woche eine geheime Mission für dich … lass dich überraschen. 🎁</div>'}
+      ? '<div style="font-size:15px;line-height:1.45">' + esc(mission.task) + '</div>'
+        + '<div class="hint" style="margin-top:8px">Deine geheime Mission – ' + esc(nameOf(partner())) + ' sieht sie nicht. Du hast 2 Wochen Zeit. Pssst.</div>'
+        + (!mission.rerolled ? '<button class="btn ghost small full" style="margin-top:10px" data-action="mission-reroll">' + icon('dice', 15) + ' Mission neu würfeln (1×)</button>' : '<div class="hint" style="margin-top:6px">Neu gewürfelt – das ist jetzt deine Mission.</div>')
+      : '<div style="font-size:15px;line-height:1.45">' + esc(nameOf(mission.wer)) + ' hat in diesen 2 Wochen eine geheime Mission für dich … lass dich überraschen. 🎁</div>'}
   </div>`;
   const myCi = checkinOf(me()), paCi = checkinOf(partner());
   html += `<div class="card" data-action="checkin-open" style="cursor:pointer">
@@ -1006,7 +1029,7 @@ function handleAction(a, el) {
     /* Navigation */
     case 'open-settings': state.tab = 'settings'; render(); break;
     case 'open-chat': state.tab = 'chat'; markChatRead(); render(); requestAnimationFrame(() => window.scrollTo(0, document.body.scrollHeight)); break;
-    case 'go-haushalt': state.tab = 'haushalt'; render(); break;
+    case 'go-haushalt': state.tab = 'haushalt'; state.haushalt = 'aufgaben'; render(); break;
     case 'go-kalender': state.tab = 'kalender'; render(); break;
     case 'home-ev': state.tab = 'kalender'; state.calView = 'tag'; state.calSel = el.dataset.iso; render(); break;
     case 'go-kueche': state.tab = 'kueche'; state.kueche = 'plan'; render(); break;
@@ -1122,12 +1145,21 @@ function handleAction(a, el) {
       if (!title || !date) break;
       const fields = { title, date, time: document.getElementById('evTime').value, who: document.getElementById('evWho').value, repeat: document.getElementById('evRepeat').value };
       const ev = id ? DATA.events.find(e => e.id === id) : null;
+      const before = ev ? { ...ev } : null;
       if (ev) Object.assign(ev, fields);
       else DATA.events.push({ id: uid(), ...fields });
       state.calSel = date;
       save(); closeSheet(); render(); toast(ev ? 'Termin geändert' : 'Termin eingetragen');
-      if (!ev && (fields.who === 'beide' || fields.who === partner())) {
+      const betrifft = w => w === 'beide' || w === partner();
+      if (!ev && betrifft(fields.who)) {
         pingPartner('Neuer Termin von ' + nameOf(me()), fields.title + ' · ' + fmtShort(date) + (fields.time ? ', ' + fields.time + ' Uhr' : ''));
+      } else if (ev && (betrifft(fields.who) || betrifft(before.who))) {
+        const changes = [];
+        if (before.date !== fields.date) changes.push('jetzt am ' + fmtShort(fields.date));
+        if (before.time !== fields.time) changes.push(fields.time ? 'jetzt um ' + fields.time + ' Uhr' : 'Uhrzeit entfernt');
+        if (before.title !== fields.title) changes.push('heißt jetzt „' + fields.title + '“');
+        if (before.who !== fields.who) changes.push('zugeordnet: ' + (fields.who === 'beide' ? 'Beide' : nameOf(fields.who)));
+        if (changes.length) pingPartner('Termin geändert: ' + before.title, changes.join(' · '));
       }
       break;
     }
@@ -1147,6 +1179,20 @@ function handleAction(a, el) {
     case 'kseg': state.kueche = el.dataset.v; render(); break;
     case 'hseg': state.haushalt = el.dataset.v; render(); break;
     case 'presence-open': openPresenceSheet(); break;
+    case 'voice-set-presence': {
+      const iso = document.getElementById('vpDate').value;
+      const who = document.getElementById('vpWho').value;
+      const slot = document.getElementById('vpSlot').value;
+      const val = document.getElementById('vpPresent').value === 'ja';
+      if (iso) {
+        const persons = who === 'beide' ? ['stefan', 'linda'] : [who];
+        const slots = slot === 'beide' ? ['m', 'a'] : [slot];
+        for (const p of persons) for (const s of slots) setPresence(iso, p, s, val);
+        closeSheet(); render(); toast('Im Plan eingetragen');
+        pingBatched('presence', nameOf(me()) + ' hat den „Wer ist wann da“-Plan aktualisiert', null, 30000);
+      }
+      break;
+    }
     case 'presence-toggle':
       setPresence(el.dataset.iso, me(), el.dataset.slot, !isPresent(el.dataset.iso, me(), el.dataset.slot));
       pingBatched('presence', nameOf(me()) + ' hat den „Wer ist wann da“-Plan aktualisiert', null, 30000);
@@ -1190,6 +1236,14 @@ function handleAction(a, el) {
     }
 
     /* Verbundenheit */
+    case 'mission-reroll': {
+      const m = currentMission();
+      if (m.wer !== me() || m.rerolled) break;
+      if (!DATA.missionSkips) DATA.missionSkips = {};
+      DATA.missionSkips[m.key] = true;
+      save(); render(); toast('Neue Mission!');
+      break;
+    }
     case 'checkin-open': openCheckinSheet(); break;
     case 'checkin-save': {
       saveCheckin(me(), {
@@ -1220,7 +1274,9 @@ function handleAction(a, el) {
       }
       break;
     }
-    case 'meal-clear': setMeal(el.dataset.iso, el.dataset.slot || 'a', null); closeSheet(); render(); break;
+    case 'meal-clear': setMeal(el.dataset.iso, el.dataset.slot || 'a', null); render(); openMealSheet(el.dataset.iso, el.dataset.slot || 'a'); break;
+    case 'meal-preview': openMealPreviewSheet(el.dataset.iso, el.dataset.slot || 'a', el.dataset.rid); break;
+    case 'meal-back': openMealSheet(el.dataset.iso, el.dataset.slot || 'a'); break;
     case 'meal-roll': {
       const r = suggestRecipe();
       if (!r) { toast('Erst Rezepte anlegen'); break; }
@@ -1613,8 +1669,9 @@ function handleAction(a, el) {
     case 'voice-add-recipe': {
       const name = document.getElementById('vrName').value.trim();
       const ing = document.getElementById('vrIng').value.split('\n').map(s => s.trim()).filter(Boolean);
+      const anleitung = (document.getElementById('vrAnleitung') || { value: '' }).value.trim();
       if (name) {
-        DATA.recipes.push({ id: uid(), name, ing });
+        DATA.recipes.push({ id: uid(), name, ing, anleitung });
         save(); closeSheet(); state.tab = 'kueche'; state.kueche = 'rezepte'; render(); toast('Rezept gespeichert');
         pingPartner('Neues Rezept von ' + nameOf(me()), name);
       }
@@ -1753,13 +1810,21 @@ function dragStart(x, y) {
   if (navigator.vibrate) { try { navigator.vibrate(10); } catch (e) {} }
   document.querySelectorAll('[data-col]').forEach(c => c.classList.add('droppable'));
 }
-function dragColAt(x, y) {
-  // Robust über Rechteck-Vergleich statt elementFromPoint
+function dragColAt(x, y, slack = 0) {
+  // Robust über Rechteck-Vergleich statt elementFromPoint;
+  // mit slack wird notfalls die nächstgelegene Spalte genommen (großzügiger Drop)
+  let best = null, bestDist = Infinity;
   for (const c of document.querySelectorAll('[data-col]')) {
     const r = c.getBoundingClientRect();
     if (x >= r.left - 4 && x <= r.right + 4 && y >= r.top - 8 && y <= r.bottom + 8) return c.dataset.col;
+    if (slack) {
+      const ox = x < r.left ? r.left - x : (x > r.right ? x - r.right : 0);
+      const oy = y < r.top ? r.top - y : (y > r.bottom ? y - r.bottom : 0);
+      const d = Math.hypot(ox, oy);
+      if (d < slack && d < bestDist) { bestDist = d; best = c.dataset.col; }
+    }
   }
-  return null;
+  return best;
 }
 function dragCancel() {
   if (!_drag) return;
@@ -1811,12 +1876,13 @@ document.addEventListener('pointermove', e => {
     return;
   }
   e.preventDefault();
+  _drag.lastX = e.clientX; _drag.lastY = e.clientY;
   _drag.ghost.style.left = (e.clientX - _drag.dx) + 'px';
   _drag.ghost.style.top = (e.clientY - _drag.dy) + 'px';
   // Sanft mitscrollen, wenn man an den Rand zieht (z. B. runter zu „Gemeinsame To-dos“)
   if (e.clientY > window.innerHeight - 90) window.scrollBy(0, 10);
   else if (e.clientY < 90) window.scrollBy(0, -10);
-  const col = dragColAt(e.clientX, e.clientY);
+  const col = dragColAt(e.clientX, e.clientY, 60);
   document.querySelectorAll('[data-col]').forEach(c => c.classList.toggle('dropover', c.dataset.col === col));
 }, { passive: false });
 document.addEventListener('pointerup', e => {
@@ -1825,13 +1891,30 @@ document.addEventListener('pointerup', e => {
   const wasActive = _drag.active;
   if (wasActive) {
     window._justDropped = Date.now();
-    const col = dragColAt(e.clientX, e.clientY);
+    const col = dragColAt(e.clientX, e.clientY, 60);
     if (col) dragDrop(col);
     e.preventDefault();
   }
   dragCancel();
 });
-document.addEventListener('pointercancel', dragCancel);
+document.addEventListener('pointercancel', e => {
+  // Bricht das System die Geste ab (z. B. weil iOS doch scrollt), zählt die
+  // letzte bekannte Position trotzdem als Drop – so geht nichts „auf halber Strecke“ verloren
+  if (_drag && _drag.active) {
+    window._justDropped = Date.now();
+    const col = dragColAt(_drag.lastX ?? e.clientX, _drag.lastY ?? e.clientY, 60);
+    if (col) dragDrop(col);
+  }
+  dragCancel();
+});
+// iOS: sobald das Ziehen aktiv ist, natives Scrollen unterbinden –
+// sonst bricht Safari die Geste mit pointercancel ab.
+document.addEventListener('touchmove', e => {
+  if (_drag && _drag.active) e.preventDefault();
+}, { passive: false });
+document.addEventListener('contextmenu', e => {
+  if (_drag) e.preventDefault(); // Kontextmenü beim Gedrückthalten unterdrücken
+});
 
 /* ---------- Erinnerungen (bei geöffneter App) ---------- */
 function maybeNotify() {
@@ -1875,15 +1958,26 @@ async function maybePushPrompt() {
 
 if (cleanupHolidayIcs()) save();
 
-/* Einmalig: 100 vegetarische Basis-Rezepte einspielen (ohne Dubletten) */
-if (!DATA.settings.recipeBaseV1) {
+/* Basis-Rezepte einspielen (ohne Dubletten) – läuft auch nach jedem Cloud-Sync,
+   damit ein älterer Datenstand aus der Cloud die Rezepte nicht wieder verdrängt */
+function ensureBaseRecipes() {
+  let changed = false;
+  const howto = typeof BASE_ANLEITUNGEN !== 'undefined' ? BASE_ANLEITUNGEN : {};
   const have = new Set(DATA.recipes.map(r => r.name.toLowerCase()));
-  for (const [name, ing] of BASE_RECIPES) {
-    if (!have.has(name.toLowerCase())) DATA.recipes.push({ id: uid(), name, ing, anleitung: '' });
+  const add = list => {
+    for (const [name, ing] of list) {
+      if (!have.has(name.toLowerCase())) { DATA.recipes.push({ id: uid(), name, ing, anleitung: howto[name] || '' }); have.add(name.toLowerCase()); changed = true; }
+    }
+  };
+  if (!DATA.settings.recipeBaseV1) { add(BASE_RECIPES); DATA.settings.recipeBaseV1 = true; changed = true; }
+  if (!DATA.settings.recipeBaseV2) { add(BASE_RECIPES_2); DATA.settings.recipeBaseV2 = true; changed = true; }
+  // Zubereitungen nachtragen, wo sie noch fehlen (auch für schon eingespielte Rezepte)
+  for (const r of DATA.recipes) {
+    if (!r.anleitung && howto[r.name]) { r.anleitung = howto[r.name]; changed = true; }
   }
-  DATA.settings.recipeBaseV1 = true;
-  save();
+  return changed;
 }
+if (ensureBaseRecipes()) save();
 
 render();
 maybeNotify();

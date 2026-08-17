@@ -109,22 +109,24 @@ function parseVoice(raw) {
 
 /* ---------- Aufnahme ---------- */
 let recog = null;
+let recogStop = false;
 
 function startVoice() {
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
   if (!SR) { openVoiceTextFallback(); return; }
 
   let finalText = '';
+  recogStop = false;
   recog = new SR();
   recog.lang = 'de-DE';
   recog.interimResults = true;
-  recog.continuous = false;
+  recog.continuous = true;
 
   openSheet(`
     <h2>Ich höre zu …</h2>
     <div class="voicebox">
-      <div class="live" id="voiceLive">Sag z.&nbsp;B.: „Schreib ${esc(nameOf(partner()))}, dass ich später komme“,<br>„Mittwoch 18 Uhr Zahnarzt“ oder „Milch auf die Liste“</div>
-      <button class="btn ghost" data-action="voice-stop">Fertig</button>
+      <div class="live" id="voiceLive">Sprich in Ruhe – ich höre zu, bis du auf „Fertig“ tippst.<br>Z.&nbsp;B.: „Schreib ${esc(nameOf(partner()))}, dass ich später komme“ oder „Milch auf die Liste“</div>
+      <button class="btn full" data-action="voice-stop">Fertig</button>
     </div>
   `);
   document.getElementById('micBtn').classList.add('listening');
@@ -132,17 +134,40 @@ function startVoice() {
   recog.onresult = ev => {
     let interim = '';
     for (let i = ev.resultIndex; i < ev.results.length; i++) {
-      if (ev.results[i].isFinal) finalText += ev.results[i][0].transcript;
+      if (ev.results[i].isFinal) finalText += ev.results[i][0].transcript + ' ';
       else interim += ev.results[i][0].transcript;
     }
     const el = document.getElementById('voiceLive');
-    if (el) el.textContent = (finalText + ' ' + interim).trim() || '…';
+    if (el) el.textContent = (finalText + interim).trim() || '…';
   };
-  recog.onerror = () => { stopVoiceUI(); openVoiceTextFallback(); };
-  recog.onend = () => {
+  let finished = false;
+  const finish = () => {
+    if (finished) return;
+    finished = true;
+    window._voiceFinish = null;
     stopVoiceUI();
     if (finalText.trim()) understandVoice(finalText);
     else closeSheet();
+  };
+  window._voiceFinish = finish; // Sicherheitsnetz: „Fertig“ beendet auch, wenn die Erkennung gerade pausiert
+
+  recog.onerror = ev => {
+    if (recogStop || finished) return;
+    // Stille o. Ä. ignorieren – onend startet die Aufnahme neu, bis „Fertig“ gedrückt wird
+    if (ev.error === 'not-allowed' || ev.error === 'service-not-allowed' || ev.error === 'audio-capture') {
+      recogStop = true; finished = true; window._voiceFinish = null;
+      stopVoiceUI(); openVoiceTextFallback();
+    }
+  };
+  recog.onend = () => {
+    if (recogStop) { finish(); return; }
+    // iOS/Safari beendet die Erkennung nach kurzen Pausen von selbst – neu starten, bis „Fertig“ gedrückt wird
+    try { recog.start(); } catch (e) {
+      setTimeout(() => {
+        if (recogStop || finished) return;
+        try { recog.start(); } catch (e2) { finish(); }
+      }, 180);
+    }
   };
   recog.start();
 }
@@ -152,7 +177,7 @@ async function understandVoice(text) {
   if (window.UZSync && UZSync.active()) {
     openSheet('<h2>Einen Moment …</h2><div class="voicebox"><div class="live">Ich überlege, was du meinst.</div></div>');
     try {
-      const r = await UZSync.invoke('ai', { mode: 'parse', text, today: todayISO() });
+      const r = await UZSync.invoke('ai', { mode: 'parse', text, today: todayISO(), speaker: nameOf(me()) });
       const a = r.action || {};
       if (a.kind === 'shopping' && (a.items || []).length) return confirmVoice({ kind: 'shopping', items: a.items });
       if (a.kind === 'message' && a.title) return confirmVoice({ kind: 'message', text: a.title });
@@ -160,10 +185,11 @@ async function understandVoice(text) {
       if (a.kind === 'idea' && a.title) return confirmVoice({ kind: 'idea', text: a.title });
       if (a.kind === 'chore' && a.title) return confirmVoice({ kind: 'chore', title: a.title, freq: a.freq || 'weekly', who: a.who || 'beide' });
       if (a.kind === 'expense' && a.amount) return confirmVoice({ kind: 'expense', amount: a.amount, title: a.title || 'Ausgabe', who: (a.who === 'stefan' || a.who === 'linda') ? a.who : me() });
-      if (a.kind === 'recipe' && a.title) return confirmVoice({ kind: 'recipe', name: a.title, ing: a.items || [] });
+      if (a.kind === 'recipe' && a.title) return confirmVoice({ kind: 'recipe', name: a.title, ing: a.items || [], anleitung: a.anleitung || '' });
       if (a.kind === 'meal' && a.dish) return confirmVoice({ kind: 'meal', date: a.date || todayISO(), dish: a.dish, items: a.items || [] });
       if (a.kind === 'event' && a.title) return confirmVoice({ kind: 'event', date: a.date || todayISO(), time: a.time || '', title: a.title, who: a.who || 'beide' });
       if (a.kind === 'todo' && a.title) return confirmVoice({ kind: 'todo', title: a.title, who: a.who || 'beide', due: a.date || '' });
+      if (a.kind === 'presence' && a.date) return confirmVoice({ kind: 'presence', date: a.date, who: a.who || me(), slot: a.slot || 'beide', present: a.present !== 'nein' });
     } catch (e) {
       console.warn('KI-Verstehen nicht verfügbar, nutze Regel-Parser:', e.message);
     }
@@ -171,7 +197,12 @@ async function understandVoice(text) {
   confirmVoice(parseVoice(text));
 }
 
-function stopVoiceRecognition() { if (recog) { try { recog.stop(); } catch (e) {} } }
+function stopVoiceRecognition() {
+  recogStop = true;
+  if (recog) { try { recog.stop(); } catch (e) {} }
+  // Falls die Erkennung gerade zwischen zwei Läufen hing, trotzdem sauber abschließen
+  setTimeout(() => { if (window._voiceFinish) window._voiceFinish(); }, 350);
+}
 function stopVoiceUI() { document.getElementById('micBtn').classList.remove('listening'); }
 
 function openVoiceTextFallback() {
@@ -256,7 +287,36 @@ function confirmVoice(p) {
       <input class="f" id="vrName" value="${esc(p.name)}">
       <label class="f">Zutaten (eine pro Zeile)</label>
       <textarea class="f" id="vrIng">${esc(p.ing.join('\n'))}</textarea>
+      <label class="f">Zubereitung</label>
+      <textarea class="f" id="vrAnleitung" rows="5">${esc(p.anleitung || '')}</textarea>
       <div style="margin-top:14px"><button class="btn full" data-action="voice-add-recipe">Rezept speichern</button></div>
+    `);
+  } else if (p.kind === 'presence') {
+    openSheet(`
+      <h2>„Wer ist wann da“ eintragen?</h2>
+      <div class="frow">
+        <div><label class="f">Tag</label><input class="f" type="date" id="vpDate" value="${esc(p.date)}"></div>
+        <div><label class="f">Wer</label>
+          <select class="f" id="vpWho">
+            <option value="stefan" ${p.who === 'stefan' ? 'selected' : ''}>Stefan</option>
+            <option value="linda" ${p.who === 'linda' ? 'selected' : ''}>Linda</option>
+            <option value="beide" ${p.who === 'beide' ? 'selected' : ''}>Beide</option>
+          </select></div>
+      </div>
+      <div class="frow">
+        <div><label class="f">Mahlzeit</label>
+          <select class="f" id="vpSlot">
+            <option value="m" ${p.slot === 'm' ? 'selected' : ''}>Mittagessen</option>
+            <option value="a" ${p.slot === 'a' ? 'selected' : ''}>Abendessen</option>
+            <option value="beide" ${p.slot === 'beide' ? 'selected' : ''}>Mittag + Abend</option>
+          </select></div>
+        <div><label class="f">Status</label>
+          <select class="f" id="vpPresent">
+            <option value="ja" ${p.present ? 'selected' : ''}>Da</option>
+            <option value="nein" ${!p.present ? 'selected' : ''}>Nicht da</option>
+          </select></div>
+      </div>
+      <div style="margin-top:14px"><button class="btn full" data-action="voice-set-presence">Eintragen</button></div>
     `);
   } else if (p.kind === 'meal') {
     window._voiceMealItems = p.items || [];

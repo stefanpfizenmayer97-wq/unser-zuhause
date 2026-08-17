@@ -31,6 +31,7 @@ body {
 }
 
 #app { max-width: 520px; margin: 0 auto; min-height: 100vh; }
+@supports (height: 100dvh) { #app { min-height: 100dvh; } }
 
 #view {
   padding: calc(env(safe-area-inset-top, 0px) + 18px) 18px calc(env(safe-area-inset-bottom, 0px) + 140px);
@@ -211,7 +212,7 @@ h2.sect .more { font-family: var(--sans); font-size: 13px; font-weight: 600; col
 
 /* ---------- Tab-Bar ---------- */
 #tabbar {
-  position: fixed; bottom: 0; left: 50%; transform: translateX(-50%);
+  position: fixed; bottom: 0; left: 50%; transform: translate3d(-50%, 0, 0);
   width: 100%; max-width: 520px;
   display: flex; justify-content: space-around;
   background: rgba(250,247,238,0.92);
@@ -324,6 +325,13 @@ input.f:focus, textarea.f:focus, select.f:focus { outline: 2px solid var(--sage)
 
 /* ---------- Chat (WhatsApp-Stil) ---------- */
 body.chatmode { background: #F0EADC; }
+body.chatmode .pagehead {
+  position: sticky; top: 0; z-index: 30;
+  background: #F0EADC;
+  margin: calc(-1 * (env(safe-area-inset-top, 0px) + 18px)) -18px 14px;
+  padding: calc(env(safe-area-inset-top, 0px) + 14px) 18px 10px;
+  box-shadow: 0 2px 10px rgba(65, 74, 44, 0.10);
+}
 body.chatmode #micBtn { display: none; }
 body.chatmode #view { padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 210px); }
 
@@ -405,7 +413,7 @@ hr.soft { border: none; border-top: 1px solid var(--line); margin: 16px 0; }
   border-radius: 13px; padding: 10px; margin-bottom: 8px;
 }
 /* Ziehen & Zuschieben */
-[data-drag-kind] { touch-action: pan-y; user-select: none; -webkit-user-select: none; }
+[data-drag-kind] { touch-action: pan-y; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
 [data-col].droppable { outline: 2px dashed var(--sand-deep); outline-offset: 4px; border-radius: 10px; transition: outline-color 0.15s, background 0.15s; }
 [data-col].dropover { outline-color: var(--olive); background: rgba(95, 107, 63, 0.07); }
 .task-mini .check { width: 22px; height: 22px; border-radius: 8px; margin-top: 1px; }
