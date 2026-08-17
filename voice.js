@@ -190,6 +190,7 @@ async function understandVoice(text) {
       if (a.kind === 'event' && a.title) return confirmVoice({ kind: 'event', date: a.date || todayISO(), time: a.time || '', title: a.title, who: a.who || 'beide' });
       if (a.kind === 'todo' && a.title) return confirmVoice({ kind: 'todo', title: a.title, who: a.who || 'beide', due: a.date || '' });
       if (a.kind === 'presence' && a.date) return confirmVoice({ kind: 'presence', date: a.date, who: a.who || me(), slot: a.slot || 'beide', present: a.present !== 'nein' });
+      if (a.kind === 'workout' && a.title) { closeSheet(); state.tab = 'training'; render(); openWorkoutForQuery(a.title); return; }
     } catch (e) {
       console.warn('KI-Verstehen nicht verfügbar, nutze Regel-Parser:', e.message);
     }

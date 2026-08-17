@@ -224,8 +224,8 @@ h2.sect .more { font-family: var(--sans); font-size: 13px; font-weight: 600; col
 #tabbar button {
   border: none; background: none; color: var(--muted);
   display: flex; flex-direction: column; align-items: center; gap: 2px;
-  font-size: 10.5px; font-weight: 600; font-family: var(--sans);
-  padding: 4px 10px; border-radius: 12px; min-width: 58px;
+  font-size: 10px; font-weight: 600; font-family: var(--sans);
+  padding: 4px 6px; border-radius: 12px; min-width: 48px;
 }
 #tabbar button .ico { display: flex; opacity: 0.5; }
 #tabbar button.active { color: var(--olive-deep); }

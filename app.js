@@ -28,12 +28,13 @@ const I = {
   send: '<path d="M3.5 11.3 20.5 4l-4.4 16.5-4.6-7.2-8-2Z"/><path d="m11.5 13.3 9-9.3"/>',
   case: '<rect x="3.5" y="7.5" width="17" height="12" rx="3"/><path d="M9 7.5V6a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v1.5M3.5 12h17"/>',
   check: '<path d="m5 12.5 4.5 4.5L19 7"/>',
+  hantel: '<path d="M2.5 12h3M18.5 12h3M8.5 12h7"/><rect x="5.5" y="8" width="3" height="8" rx="1"/><rect x="15.5" y="8" width="3" height="8" rx="1"/>',
 };
 function icon(n, s = 20) {
   return `<svg viewBox="0 0 24 24" width="${s}" height="${s}" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${I[n] || ''}</svg>`;
 }
 
-const state = { tab: 'home', calY: null, calM: null, calSel: todayISO(), kueche: 'plan' };
+const state = { tab: 'home', calY: null, calM: null, calSel: todayISO(), kueche: 'plan', training: 'woche' };
 
 /* ---------- Sheet & Toast ---------- */
 function openSheet(html) {
@@ -86,7 +87,7 @@ function render() {
   if (state.tab === 'chat' && unreadCount() > 0) markChatRead(); // im offenen Chat gilt alles als gelesen
   document.querySelectorAll('#tabbar button').forEach(b => b.classList.toggle('active', b.dataset.tab === state.tab));
   const v = document.getElementById('view');
-  const views = { home: renderHome, haushalt: renderHaushalt, kalender: renderKalender, kueche: renderKueche, uns: renderUns, chat: renderChat, settings: renderSettings };
+  const views = { home: renderHome, haushalt: renderHaushalt, kalender: renderKalender, kueche: renderKueche, uns: renderUns, chat: renderChat, settings: renderSettings, training: renderTraining };
   v.innerHTML = (views[state.tab] || renderHome)();
   window.scrollTo(0, 0);
   updateBadge();
@@ -206,6 +207,15 @@ function renderHome() {
   if (mealA) {
     anyToday = true;
     html += `<div class="row" data-action="go-kueche"><span class="ric">${icon('pot', 18)}</span><div class="grow"><div class="title">${esc(mealName(mealA))}</div><div class="meta">Heute Abend auf dem Kochplan</div></div></div>`;
+  }
+  if (DATA.training && DATA.training.plans && DATA.training.plans[me()]) {
+    const trMon = toISO(startOfWeek(new Date()));
+    const trE = (trainingWeekEntries(me(), trMon) || scheduleTrainingWeek(me(), trMon) || [])
+      .find(e => !e.done && toISO(addDays(new Date(trMon + 'T12:00'), e.day)) === todayISO());
+    if (trE) {
+      anyToday = true;
+      html += `<div class="row" data-action="go-training"><span class="ric">${icon('hantel', 18)}</span><div class="grow"><div class="title">${esc(trE.title)}</div><div class="meta">Heute auf deinem Trainingsplan · ~${trE.minutes} Min.</div></div></div>`;
+    }
   }
   for (const t of dueMine.slice(0, 3)) {
     anyToday = true;
@@ -949,6 +959,214 @@ function msgTime(m) {
 }
 function msgDay(m) { return m.at ? toISO(new Date(m.at)) : null; }
 
+/* ---------- Training ---------- */
+function renderTraining() {
+  const mon = toISO(startOfWeek(new Date()));
+  let html = `<div class="pagehead"><div><h1 class="page">Training</h1><div class="sub">Stark werden – allein und zu zweit</div></div></div>
+  <div class="seg">
+    <button class="${state.training === 'woche' ? 'active' : ''}" data-action="trseg" data-v="woche">Meine Woche</button>
+    <button class="${state.training === 'workouts' ? 'active' : ''}" data-action="trseg" data-v="workouts">Workouts</button>
+    <button class="${state.training === 'zusammen' ? 'active' : ''}" data-action="trseg" data-v="zusammen">Zusammen</button>
+  </div>`;
+  if (state.training === 'workouts') html += renderWorkoutLib();
+  else if (state.training === 'zusammen') html += renderTrainingTogether(mon);
+  else html += renderTrainingWeek(mon);
+  return html;
+}
+
+const GOAL_LABEL = { staerker: 'Stärker werden', masse: 'Muskeln aufbauen', ausdauer: 'Ausdauer verbessern', beweglich: 'Beweglicher werden', fit: 'Rundum fit' };
+
+function renderTrainingWeek(mon) {
+  const plan = trainingState().plans[me()];
+  if (!plan) {
+    return `<div class="card" style="text-align:center;padding:26px 18px">
+      ${icon('hantel', 34)}
+      <p style="margin:10px 0 4px"><b>Noch kein Trainingsplan</b></p>
+      <p class="mut">Sag mir dein Ziel und wie oft du Zeit hast – ich plane deine Wochen automatisch um euren Kalender herum.</p>
+      <button class="btn full" style="margin-top:12px" data-action="training-wizard">${icon('spark', 16)} Meinen Plan erstellen</button>
+    </div>
+    <p class="hint" style="margin-top:10px">Einzelne Workouts findest du jederzeit unter „Workouts“ – auch ohne Plan.</p>`;
+  }
+  if (reflowTrainingWeek(me(), mon)) toast('Training wegen Terminen umgeplant');
+  const entries = trainingWeekEntries(me(), mon) || scheduleTrainingWeek(me(), mon);
+  const t = todayISO();
+  const wk = Math.max(1, Math.floor((new Date(t) - new Date(plan.startISO)) / (7 * 864e5)) + 1);
+  const total = plan.duration === '3m' ? 13 : 4;
+  let html = `<div class="card sand" style="margin-bottom:12px">
+    <b>${esc(GOAL_LABEL[plan.goal] || 'Mein Plan')}</b> · ${plan.freq}× pro Woche · Woche ${Math.min(wk, total)} von ${total}
+    <div class="hint" style="margin-top:6px">${esc(plan.progression)}</div>
+  </div>`;
+  for (const e of entries) {
+    const iso = toISO(addDays(new Date(mon + 'T12:00'), e.day));
+    const isToday = iso === t;
+    const past = iso < t && !e.done;
+    html += `<div class="row ${e.done ? 'done' : ''}" style="${isToday ? 'border-left:3px solid var(--olive);' : ''}">
+      <button class="check ${e.done ? 'on' : ''}" data-action="training-done" data-mon="${mon}" data-day="${e.day}">${icon('check', 15)}</button>
+      <div class="grow" data-action="training-open" data-cat="${e.cat}" data-mon="${mon}" data-day="${e.day}">
+        <div class="title">${esc(e.title)}</div>
+        <div class="meta">${WD[e.day]} ${isToday ? '· heute' : ''} · ~${e.minutes} Min.${e.moved ? ' · wegen Termin verschoben' : ''}${past ? ' · verpasst – einfach nachholen' : ''}</div>
+      </div>
+      <span class="more" data-action="training-move" data-mon="${mon}" data-day="${e.day}">schieben</span>
+    </div>`;
+  }
+  html += `<div style="display:flex;gap:8px;margin-top:14px">
+    <button class="btn ghost small" style="flex:1" data-action="training-wizard">Plan anpassen</button>
+    <button class="btn ghost small" style="flex:1" data-action="training-replan">Woche neu legen</button>
+  </div>`;
+  return html;
+}
+
+function renderWorkoutLib() {
+  const cats = [
+    ['Für zuhause', [['home-ganzkoerper', 'Ganzkörper'], ['home-bauch', 'Bauch'], ['home-beine', 'Beine & Po'], ['home-arme', 'Arme & Schultern'], ['home-stretch', 'Stretching'], ['home-yoga', 'Yoga']]],
+    ['Zu zweit', [['paar-zirkel20', 'Partner-Zirkel'], ['paar-sync20', 'Synchron-Workout'], ['paar-kraft30', 'Partner-Kraft'], ['paar-spass30', 'Cardio & Spaß']]],
+    ['Im Gym', [['gym-ganzkoerper', 'Ganzkörper'], ['gym-oberkoerper', 'Oberkörper'], ['gym-unterkoerper', 'Unterkörper'], ['gym-push', 'Push'], ['gym-pull', 'Pull'], ['gym-bauch', 'Bauch & Core'], ['gym-ausdauer', 'Ausdauer'], ['gym-sprungkraft', 'Sprungkraft']]],
+    ['Ausdauer draußen', [['cardio-joggen', 'Joggen'], ['cardio-radfahren', 'Radfahren'], ['cardio-schwimmen', 'Schwimmen']]],
+  ];
+  let html = '';
+  for (const [label, list] of cats) {
+    html += `<h2 class="sect">${label}</h2><div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">`;
+    for (const [cat, name] of list) {
+      html += `<div class="card" data-action="training-open" data-cat="${cat}" style="padding:14px"><div class="lbl" style="font-weight:700;color:var(--ink)">${name}</div><div class="hint">${workoutByCat(cat).minutes} Min.</div></div>`;
+    }
+    html += '</div>';
+  }
+  return html;
+}
+
+function renderTrainingTogether(mon) {
+  const ts = trainingState();
+  const mine = ts.plans[me()] ? (trainingWeekEntries(me(), mon) || scheduleTrainingWeek(me(), mon)) : null;
+  const theirs = ts.plans[partner()] ? trainingWeekEntries(partner(), mon) : null;
+  let html = '';
+  if (!mine || !theirs) {
+    html += `<div class="card"><p class="mut">${!mine ? 'Du hast' : esc(nameOf(partner())) + ' hat'} noch keinen Trainingsplan – sobald ihr beide einen habt, suche ich hier jede Woche eure gemeinsamen Trainingsmomente.</p></div>`;
+  } else {
+    const t = todayISO();
+    const suggestions = [];
+    const famOf = e => workoutFamily(e.cat);
+    // 1) Gleiche Trainingsart in dieser Woche? Freien gemeinsamen Abend suchen
+    for (const m of mine) {
+      if (m.done) continue;
+      const match = theirs.find(x => !x.done && famOf(x) === famOf(m));
+      if (!match) continue;
+      let bestDay = null;
+      for (let d = 0; d < 7; d++) {
+        const iso = toISO(addDays(new Date(mon + 'T12:00'), d));
+        if (iso < t) continue;
+        if (trainingEveningBusy(iso, me()) || trainingEveningBusy(iso, partner())) continue;
+        bestDay = d; break;
+      }
+      if (bestDay !== null) {
+        suggestions.push({ fam: famOf(m), day: bestDay, title: famOf(m) === 'paar' ? m.title : 'Gemeinsam: ' + m.title, cat: m.cat });
+      }
+      if (suggestions.length >= 2) break;
+    }
+    if (suggestions.length) {
+      html += `<h2 class="sect">Diese Woche zusammen?</h2>`;
+      for (const s of suggestions) {
+        const iso = toISO(addDays(new Date(mon + 'T12:00'), s.day));
+        html += `<div class="card" style="margin-bottom:8px">
+          <b>${esc(s.title)}</b>
+          <div class="hint" style="margin:4px 0 10px">Ihr habt beide ${s.fam === 'paar' ? 'ein Paar-Workout' : s.fam + '-Training'} auf dem Plan – am ${WD[s.day]} (${fmtShort(iso)}) habt ihr laut Kalender beide abends frei.</div>
+          <button class="btn small full" data-action="training-together" data-iso="${iso}" data-title="${esc(s.title)}" data-cat="${s.cat}">${icon('cal', 15)} ${WD[s.day]} 19:00 gemeinsam eintragen</button>
+        </div>`;
+      }
+    } else {
+      html += `<div class="card"><p class="mut">Diese Woche habe ich keine passende Überschneidung gefunden – schnappt euch unten einfach spontan ein Paar-Workout.</p></div>`;
+    }
+  }
+  html += `<h2 class="sect">Paar-Workouts</h2>`;
+  for (const p of PAAR_WORKOUTS) {
+    html += `<div class="row" data-action="training-open" data-cat="paar-${p.id}">
+      <span class="ric">${icon('heart', 18)}</span>
+      <div class="grow"><div class="title">${esc(p.name)}</div><div class="meta">~${p.minutes} Min. zu zweit</div></div>
+    </div>`;
+  }
+  return html;
+}
+
+function openWorkoutSheet(cat, mon, day) {
+  const plan = trainingState().plans[me()];
+  const w = adaptWorkoutToGoal(cat, plan && cat.startsWith('gym') ? plan.goal : null);
+  if (!w) return;
+  const note = plan && GOAL_NOTES[plan.goal] && (cat.startsWith('gym') || workoutFamily(cat) === 'kraft') ? GOAL_NOTES[plan.goal] : '';
+  openSheet(`
+    <h2>${esc(w.name)}</h2>
+    <p class="mut">~${w.minutes} Min. · ${esc(w.rounds)}</p>
+    ${note ? '<div class="card sand" style="margin-bottom:10px;font-size:13px">' + esc(note) + '</div>' : ''}
+    ${w.ex.map(([n, v]) => '<div class="row"><span class="ric">' + icon('hantel', 16) + '</span><div class="grow"><div class="title">' + esc(n) + '</div></div><span class="meta">' + esc(v) + '</span></div>').join('')}
+    <div style="margin-top:14px;display:flex;flex-direction:column;gap:8px">
+      ${mon !== undefined && day !== undefined ? '<button class="btn full" data-action="training-done-sheet" data-mon="' + mon + '" data-day="' + day + '">' + icon('check', 16) + ' Geschafft – abhaken</button>' : ''}
+      <button class="btn ghost small full" data-action="training-to-cal" data-cat="${cat}" data-title="${esc(w.name)}">${icon('cal', 15)} Als Termin in den Kalender</button>
+    </div>
+  `);
+}
+
+function openTrainingWizard() {
+  const plan = trainingState().plans[me()] || {};
+  const el = (v, cur) => v === cur ? 'selected' : '';
+  const chk = v => (plan.elements || []).includes(v) ? 'checked' : '';
+  openSheet(`
+    <h2>Dein Trainingsplan</h2>
+    <label class="f">Was ist dein Ziel?</label>
+    <select class="f" id="twGoal">
+      <option value="fit" ${el('fit', plan.goal)}>Rundum fit werden</option>
+      <option value="staerker" ${el('staerker', plan.goal)}>Stärker werden (Kraft)</option>
+      <option value="masse" ${el('masse', plan.goal)}>Muskeln aufbauen</option>
+      <option value="ausdauer" ${el('ausdauer', plan.goal)}>Ausdauer verbessern</option>
+      <option value="beweglich" ${el('beweglich', plan.goal)}>Beweglicher werden</option>
+    </select>
+    <div class="frow">
+      <div><label class="f">Wie oft pro Woche?</label>
+        <select class="f" id="twFreq">${[2, 3, 4, 5, 6, 7].map(n => '<option value="' + n + '" ' + (plan.freq === n ? 'selected' : '') + '>' + n + '×</option>').join('')}</select></div>
+      <div><label class="f">Wie lange?</label>
+        <select class="f" id="twDuration">
+          <option value="1m" ${el('1m', plan.duration)}>1 Monat</option>
+          <option value="3m" ${el('3m', plan.duration)}>3 Monate</option>
+        </select></div>
+    </div>
+    <label class="f">Womit willst du trainieren?</label>
+    <div class="card" style="display:flex;flex-direction:column;gap:10px;font-size:14px">
+      <label style="display:flex;gap:10px;align-items:center"><input type="checkbox" id="twHome" ${chk('home')}> Zuhause (ohne Geräte)</label>
+      <label style="display:flex;gap:10px;align-items:center"><input type="checkbox" id="twGym" ${chk('gym')}> Fitnessstudio</label>
+      <label style="display:flex;gap:10px;align-items:center"><input type="checkbox" id="twPaar" ${chk('paar')}> Paar-Workouts mit ${esc(nameOf(partner()))}</label>
+      <label style="display:flex;gap:10px;align-items:center"><input type="checkbox" id="twJoggen" ${chk('joggen')}> Joggen</label>
+      <label style="display:flex;gap:10px;align-items:center"><input type="checkbox" id="twRad" ${chk('radfahren')}> Radfahren</label>
+      <label style="display:flex;gap:10px;align-items:center"><input type="checkbox" id="twSchwimmen" ${chk('schwimmen')}> Schwimmen</label>
+    </div>
+    <p class="hint" style="margin-top:8px">Die Tage lege ich jede Woche neu – passend zu eurem Kalender. Du kannst jede Einheit jederzeit verschieben.</p>
+    <div style="margin-top:12px;display:flex;flex-direction:column;gap:8px">
+      <button class="btn full" data-action="training-create">${icon('spark', 16)} Plan erstellen</button>
+      ${trainingState().plans[me()] ? '<button class="btn danger small full" data-action="training-delete">Plan löschen</button>' : ''}
+    </div>
+  `);
+}
+
+function openTrainingMoveSheet(mon, day) {
+  const entries = trainingWeekEntries(me(), mon) || [];
+  const e = entries.find(x => x.day === Number(day));
+  if (!e) return;
+  const t = todayISO();
+  const opts = [];
+  for (let d = 0; d < 7; d++) {
+    if (d === e.day) continue;
+    const iso = toISO(addDays(new Date(mon + 'T12:00'), d));
+    if (iso < t) continue;
+    const taken = entries.some(x => x.day === d);
+    const busy = trainingEveningBusy(iso, me());
+    opts.push(`<button class="btn ghost small full" style="margin-bottom:8px" data-action="training-move-to" data-mon="${mon}" data-from="${e.day}" data-to="${d}">
+      ${WD[d]} (${fmtShort(iso)})${busy ? ' · abends Termin' : ''}${taken ? ' · schon eine Einheit' : ''}
+    </button>`);
+  }
+  openSheet(`
+    <h2>„${esc(e.title)}“ verschieben</h2>
+    <p class="mut">Auf welchen Tag?</p>
+    ${opts.join('') || '<p class="mut">Diese Woche ist kein Tag mehr frei.</p>'}
+    <button class="btn danger small full" data-action="training-skip" data-mon="${mon}" data-day="${e.day}">Diese Woche ausfallen lassen</button>
+  `);
+}
+
 function renderChat() {
   let html = `<div class="pagehead"><div><h1 class="page">${esc(nameOf(partner()))}</h1><div class="sub">Nur für euch zwei</div></div>
     <button class="iconbtn" data-tab="home">${icon('chevL', 18)}</button></div>`;
@@ -1034,6 +1252,7 @@ function handleAction(a, el) {
     case 'home-ev': state.tab = 'kalender'; state.calView = 'tag'; state.calSel = el.dataset.iso; render(); break;
     case 'go-kueche': state.tab = 'kueche'; state.kueche = 'plan'; render(); break;
     case 'go-einkauf': state.tab = 'kueche'; state.kueche = 'list'; render(); break;
+    case 'go-training': state.tab = 'training'; state.training = 'woche'; render(); break;
 
     /* Notiz & Highlight */
     case 'edit-note':
@@ -1232,6 +1451,91 @@ function handleAction(a, el) {
       save(); closeSheet(); render();
       pingPartner('Finanzen ausgeglichen', 'Alle offenen Ausgaben sind abgehakt');
       toast('Alles beglichen');
+      break;
+    }
+
+    /* Training */
+    case 'trseg': state.training = el.dataset.v; render(); break;
+    case 'training-wizard': openTrainingWizard(); break;
+    case 'training-create': {
+      const elements = [];
+      if (document.getElementById('twHome').checked) elements.push('home');
+      if (document.getElementById('twGym').checked) elements.push('gym');
+      if (document.getElementById('twPaar').checked) elements.push('paar');
+      if (document.getElementById('twJoggen').checked) elements.push('joggen');
+      if (document.getElementById('twRad').checked) elements.push('radfahren');
+      if (document.getElementById('twSchwimmen').checked) elements.push('schwimmen');
+      if (!elements.length) { toast('Wähle mindestens ein Element aus'); break; }
+      const opts = {
+        goal: document.getElementById('twGoal').value,
+        freq: Number(document.getElementById('twFreq').value),
+        duration: document.getElementById('twDuration').value,
+        elements,
+      };
+      const gen = buildTrainingPlan(opts);
+      const ts = trainingState();
+      ts.plans[me()] = { ...opts, startISO: todayISO(), weekly: gen.weekly, progression: gen.progression };
+      // aktuelle Woche neu legen
+      delete ts.week[toISO(startOfWeek(new Date())) + ':' + me()];
+      scheduleTrainingWeek(me(), toISO(startOfWeek(new Date())));
+      save(); closeSheet(); state.training = 'woche'; render(); toast('Dein Plan steht!');
+      pingPartner(nameOf(me()) + ' hat einen Trainingsplan', (GOAL_LABEL[opts.goal] || '') + ' · ' + opts.freq + '× pro Woche' + (elements.includes('paar') ? ' – mit Paar-Workouts!' : ''));
+      break;
+    }
+    case 'training-delete': {
+      const ts = trainingState();
+      delete ts.plans[me()];
+      for (const k of Object.keys(ts.week)) if (k.endsWith(':' + me())) delete ts.week[k];
+      save(); closeSheet(); render(); toast('Plan gelöscht');
+      break;
+    }
+    case 'training-replan': {
+      const ts = trainingState();
+      delete ts.week[toISO(startOfWeek(new Date())) + ':' + me()];
+      scheduleTrainingWeek(me(), toISO(startOfWeek(new Date())));
+      render(); toast('Woche neu geplant');
+      break;
+    }
+    case 'training-open': openWorkoutSheet(el.dataset.cat, el.dataset.mon, el.dataset.day !== undefined ? Number(el.dataset.day) : undefined); break;
+    case 'training-done': case 'training-done-sheet': {
+      const entries = trainingWeekEntries(me(), el.dataset.mon) || [];
+      const e = entries.find(x => x.day === Number(el.dataset.day));
+      if (e) {
+        e.done = !e.done;
+        save();
+        if (a === 'training-done-sheet') closeSheet();
+        render();
+        if (e.done) { toast('Stark! 💪'); pingBatched('training', nameOf(me()) + ' hat trainiert', e.title, 5000); }
+      }
+      break;
+    }
+    case 'training-move': openTrainingMoveSheet(el.dataset.mon, el.dataset.day); break;
+    case 'training-move-to': {
+      const entries = trainingWeekEntries(me(), el.dataset.mon) || [];
+      const e = entries.find(x => x.day === Number(el.dataset.from));
+      if (e) {
+        e.day = Number(el.dataset.to); e.moved = true;
+        entries.sort((x, y) => x.day - y.day);
+        save(); closeSheet(); render(); toast('Verschoben');
+      }
+      break;
+    }
+    case 'training-skip': {
+      const entries = trainingWeekEntries(me(), el.dataset.mon) || [];
+      const idx = entries.findIndex(x => x.day === Number(el.dataset.day));
+      if (idx >= 0) { entries.splice(idx, 1); save(); closeSheet(); render(); toast('Diese Woche ohne – passt'); }
+      break;
+    }
+    case 'training-to-cal': {
+      DATA.events.push({ id: uid(), title: el.dataset.title, date: todayISO(), time: '', who: me(), repeat: '' });
+      save(); closeSheet(); state.tab = 'kalender'; state.calSel = todayISO(); render();
+      toast('Im Kalender – Datum/Uhrzeit dort anpassen');
+      break;
+    }
+    case 'training-together': {
+      DATA.events.push({ id: uid(), title: el.dataset.title, date: el.dataset.iso, time: '19:00', who: 'beide', repeat: '' });
+      save(); render(); toast('Gemeinsames Training steht im Kalender');
+      pingPartner('Gemeinsames Training?', el.dataset.title + ' · ' + fmtShort(el.dataset.iso) + ', 19:00 Uhr – ' + nameOf(me()) + ' hat es eingetragen');
       break;
     }
 
@@ -1957,6 +2261,7 @@ async function maybePushPrompt() {
 }
 
 if (cleanupHolidayIcs()) save();
+if (typeof trainingCleanup === 'function' && trainingCleanup()) save();
 
 /* Basis-Rezepte einspielen (ohne Dubletten) – läuft auch nach jedem Cloud-Sync,
    damit ein älterer Datenstand aus der Cloud die Rezepte nicht wieder verdrängt */

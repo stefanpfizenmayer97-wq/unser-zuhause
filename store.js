@@ -86,6 +86,7 @@ const SEED = {
   expenses: [],
   checkins: {},
   missionSkips: {},
+  training: { plans: {}, week: {} },
   us: {
     ideas: ['Picknick am Fluss', 'Zusammen Sushi selber machen', 'Abendspaziergang und ein Eis', 'Brettspielabend', 'Fotodate in der Stadt'],
     bucket: ['Ein Wochenende nach Südtirol', 'Töpferkurs zusammen machen'],
