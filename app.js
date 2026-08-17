@@ -1020,6 +1020,18 @@ function renderTrainingWeek(mon) {
     <b>${esc(planGoals(plan).map(g => GOAL_LABEL[g] || g).join(' + ') || 'Mein Plan')}</b> · ${plan.freq}× pro Woche · Woche ${Math.min(wk, total)} von ${total}
     <div class="hint" style="margin-top:6px">${esc(plan.progression)}</div>
   </div>`;
+  // Wochen-Check-in: einmal pro Woche kurz bestätigen oder anpassen
+  const prefs = trainingWeekPrefs(me(), mon);
+  if (!prefs) {
+    html += `<div class="card" style="margin-bottom:12px;border-left:4px solid var(--olive)">
+      <b>Neue Woche – passt dein Pensum?</b>
+      <div class="hint" style="margin:4px 0 10px">Geplant sind ${plan.freq} Einheiten. Wenn diese Woche mehr oder weniger drin ist (oder andere Orte), sag es kurz – deine Ziele bleiben im Blick.</div>
+      <div style="display:flex;gap:8px">
+        <button class="btn small" style="flex:1" data-action="training-week-ok">Passt so ✓</button>
+        <button class="btn ghost small" style="flex:1" data-action="training-week-adjust">Diese Woche anpassen</button>
+      </div>
+    </div>`;
+  }
   // Rückblick auf die Vorwoche + Ausblick auf die kommende
   const stats = trainingLastWeekStats(me(), mon);
   const nextMon = toISO(addDays(new Date(mon + 'T12:00'), 7));
@@ -1046,7 +1058,7 @@ function renderTrainingWeek(mon) {
       <button class="check ${e.done ? 'on' : ''}" data-action="training-done" data-mon="${mon}" data-day="${e.day}">${icon('check', 15)}</button>
       <div class="grow" data-action="training-open" data-cat="${e.cat}" data-mon="${mon}" data-day="${e.day}">
         <div class="title">${esc(e.title)}</div>
-        <div class="meta">${WD[e.day]} ${isToday ? '· heute' : ''} · ~${e.minutes} Min.${e.moved ? ' · wegen Termin verschoben' : ''}${past ? ' · verpasst – einfach nachholen' : ''}</div>
+        <div class="meta">${WD[e.day]} ${isToday ? '· heute' : ''}${e.time ? ' · ' + esc(e.time) + ' Uhr' : ''} · ~${e.minutes} Min.${e.moved ? ' · wegen Termin verschoben' : ''}${past ? ' · verpasst – einfach nachholen' : ''}</div>
       </div>
       <span class="more" data-action="training-move" data-mon="${mon}" data-day="${e.day}">schieben</span>
     </div>`;
@@ -1154,7 +1166,7 @@ function renderTrainingTogether(mon) {
 function openWorkoutSheet(cat, mon, day) {
   const plan = trainingState().plans[me()];
   const gymGoal = plan && cat.startsWith('gym') ? primaryGymGoal(plan) : null;
-  const w = adaptWorkoutToGoal(cat, gymGoal);
+  const w = adaptWorkoutToGoal(cat, gymGoal, me());
   if (!w) return;
   const note = gymGoal && GOAL_NOTES[gymGoal] ? GOAL_NOTES[gymGoal] : '';
   openSheet(`
@@ -1167,6 +1179,7 @@ function openWorkoutSheet(cat, mon, day) {
     <div style="margin-top:14px;display:flex;flex-direction:column;gap:8px">
       ${mon !== undefined && day !== undefined ? '<button class="btn full" data-action="training-done-sheet" data-mon="' + mon + '" data-day="' + day + '">' + icon('check', 16) + ' Geschafft – abhaken</button>' : ''}
       <button class="btn ghost small full" data-action="training-to-cal" data-cat="${cat}" data-title="${esc(w.name)}">${icon('cal', 15)} Als Termin in den Kalender</button>
+      <button class="btn ghost small full" data-action="workout-edit" data-cat="${cat}">${icon('pen', 14)} Übungen anpassen${w.custom ? ' (angepasst)' : ''}</button>
     </div>
   `);
 }
@@ -1285,10 +1298,77 @@ function openTrainingMoveSheet(mon, day) {
     </button>`);
   }
   openSheet(`
-    <h2>„${esc(e.title)}“ verschieben</h2>
-    <p class="mut">Auf welchen Tag?</p>
+    <h2>„${esc(e.title)}“ anpassen</h2>
+    <label class="f">Uhrzeit (steht dann im Kalender)</label>
+    <div style="display:flex;gap:8px;margin-bottom:14px">
+      <input class="f" type="time" id="tmTime" value="${esc(e.time || '')}" style="flex:1;margin:0">
+      <button class="btn small" data-action="training-set-time" data-mon="${mon}" data-day="${e.day}">Speichern</button>
+    </div>
+    <label class="f">Oder auf einen anderen Tag</label>
     ${opts.join('') || '<p class="mut">Diese Woche ist kein Tag mehr frei.</p>'}
     <button class="btn danger small full" data-action="training-skip" data-mon="${mon}" data-day="${e.day}">Diese Woche ausfallen lassen</button>
+  `);
+}
+
+/* Wochen-Check-in: Pensum und Orte nur für diese Woche */
+function openTrainingWeekSheet() {
+  const plan = trainingState().plans[me()];
+  if (!plan) return;
+  const mon = toISO(startOfWeek(new Date()));
+  const prefs = trainingWeekPrefs(me(), mon) || {};
+  const els = prefs.elements || plan.elements || [];
+  const chk = v => els.includes(v) ? 'checked' : '';
+  openSheet(`
+    <h2>Diese Woche</h2>
+    <p class="mut">Dein Langfrist-Plan bleibt – hier stellst du nur diese Woche ein.</p>
+    <label class="f">Wie oft schaffst du es?</label>
+    <select class="f" id="wpFreq">${[1, 2, 3, 4, 5, 6, 7].map(n => '<option value="' + n + '" ' + ((prefs.freq || plan.freq) === n ? 'selected' : '') + '>' + n + '×</option>').join('')}</select>
+    <label class="f">Wo kannst du trainieren?</label>
+    <div class="card" style="display:flex;flex-direction:column;gap:10px;font-size:14px">
+      <label style="display:flex;gap:10px;align-items:center"><input type="checkbox" id="wpHome" ${chk('home')}> Zuhause</label>
+      <label style="display:flex;gap:10px;align-items:center"><input type="checkbox" id="wpGym" ${chk('gym')}> Fitnessstudio</label>
+      <label style="display:flex;gap:10px;align-items:center"><input type="checkbox" id="wpPaar" ${chk('paar')}> Paar-Workout</label>
+      <label style="display:flex;gap:10px;align-items:center"><input type="checkbox" id="wpJoggen" ${chk('joggen')}> Joggen</label>
+      <label style="display:flex;gap:10px;align-items:center"><input type="checkbox" id="wpRad" ${chk('radfahren')}> Radfahren</label>
+      <label style="display:flex;gap:10px;align-items:center"><input type="checkbox" id="wpSchwimmen" ${chk('schwimmen')}> Schwimmen</label>
+    </div>
+    <div style="margin-top:12px;display:flex;flex-direction:column;gap:8px">
+      <button class="btn full" data-action="training-week-apply">Woche so planen</button>
+      <button class="btn ghost full" data-action="training-week-ai">${icon('spark', 15)} Von der KI planen lassen</button>
+    </div>
+  `);
+}
+function readWeekPrefsForm() {
+  const elements = [];
+  if (document.getElementById('wpHome').checked) elements.push('home');
+  if (document.getElementById('wpGym').checked) elements.push('gym');
+  if (document.getElementById('wpPaar').checked) elements.push('paar');
+  if (document.getElementById('wpJoggen').checked) elements.push('joggen');
+  if (document.getElementById('wpRad').checked) elements.push('radfahren');
+  if (document.getElementById('wpSchwimmen').checked) elements.push('schwimmen');
+  return { freq: Number(document.getElementById('wpFreq').value), elements };
+}
+function applyWeekPrefs(prefs) {
+  const ts = trainingState();
+  const mon = toISO(startOfWeek(new Date()));
+  ts.weekPrefs[mon + ':' + me()] = prefs;
+  delete ts.week[mon + ':' + me()];
+  scheduleTrainingWeek(me(), mon);
+  save(); closeSheet(); state.training = 'woche'; render();
+}
+
+/* Übungsliste eines Workouts selbst anpassen */
+function openWorkoutEditSheet(cat) {
+  const w = workoutByCat(cat, me());
+  if (!w) return;
+  openSheet(`
+    <h2>${esc(w.name)} anpassen</h2>
+    <p class="mut">Eine Übung pro Zeile, Format: <b>Übung – Umfang</b> (z. B. „Bankdrücken – 3×8“). Gilt nur für dich.</p>
+    <textarea class="f" id="weEx" rows="10">${esc(w.ex.map(([n, v]) => n + ' – ' + v).join('\n'))}</textarea>
+    <div style="margin-top:12px;display:flex;flex-direction:column;gap:8px">
+      <button class="btn full" data-action="workout-edit-save" data-cat="${cat}">Speichern</button>
+      ${w.custom ? '<button class="btn danger small full" data-action="workout-edit-reset" data-cat="' + cat + '">Zurück zum Standard</button>' : ''}
+    </div>
   `);
 }
 
@@ -1644,6 +1724,77 @@ function handleAction(a, el) {
       break;
     }
     case 'training-move': openTrainingMoveSheet(el.dataset.mon, el.dataset.day); break;
+    case 'training-week-ok': {
+      const ts = trainingState();
+      ts.weekPrefs[toISO(startOfWeek(new Date())) + ':' + me()] = { ok: true };
+      save(); render(); toast('Alles klar – Woche steht');
+      break;
+    }
+    case 'training-week-adjust': openTrainingWeekSheet(); break;
+    case 'training-week-apply': applyWeekPrefs(readWeekPrefsForm()); toast('Woche angepasst'); break;
+    case 'training-week-ai': {
+      const prefs = readWeekPrefsForm();
+      openSheet('<h2>Einen Moment …</h2><div class="voicebox"><div class="live">Ich stelle deine Trainingswoche zusammen.</div></div>');
+      (async () => {
+        try {
+          const plan = trainingState().plans[me()];
+          const mon = toISO(startOfWeek(new Date()));
+          const stats = trainingLastWeekStats(me(), mon);
+          const wkNr = Math.max(1, Math.floor((new Date(todayISO()) - new Date(plan.startISO)) / (7 * 864e5)) + 1);
+          // Historie der letzten 3 Wochen: was wurde wirklich gemacht?
+          const history = [];
+          for (let wBack = 1; wBack <= 3; wBack++) {
+            const wMon = toISO(addDays(new Date(mon + 'T12:00'), -7 * wBack));
+            const es = trainingState().week[wMon + ':' + me()] || [];
+            if (es.length) history.push({ weeksAgo: wBack, done: es.filter(x => x.done).map(x => x.cat), missed: es.filter(x => !x.done).map(x => x.cat) });
+          }
+          const r = await UZSync.invoke('ai', {
+            mode: 'trainweek',
+            goals: planGoals(plan), freq: prefs.freq, elements: prefs.elements,
+            lastWeek: stats, history, weekNumber: wkNr,
+            freeEveningsNextWeek: trainingFreeEvenings(me(), toISO(addDays(new Date(mon + 'T12:00'), 7))),
+          });
+          const sessions = (r.sessions || [])
+            .filter(s => typeof workoutByCat === 'function' && workoutByCat(s.cat))
+            .map(s => { const w = workoutByCat(s.cat); return { cat: s.cat, title: w.name, minutes: s.minutes || w.minutes, day: 0 }; });
+          if (!sessions.length) throw new Error('leer');
+          applyWeekPrefs({ ...prefs, sessions, hinweis: r.hinweis || '' });
+          toast('Deine KI-Woche steht!');
+          if (r.hinweis) setTimeout(() => toast(r.hinweis), 1600);
+        } catch (e) {
+          console.warn('KI-Wochenplanung nicht verfügbar:', e.message);
+          applyWeekPrefs(prefs);
+          toast('KI gerade nicht erreichbar – nach Plan-Logik gelegt');
+        }
+      })();
+      break;
+    }
+    case 'training-set-time': {
+      const entries = trainingWeekEntries(me(), el.dataset.mon) || [];
+      const e = entries.find(x => x.day === Number(el.dataset.day));
+      if (e) { e.time = document.getElementById('tmTime').value || ''; save(); closeSheet(); render(); toast(e.time ? 'Steht um ' + e.time + ' Uhr im Kalender' : 'Uhrzeit entfernt'); }
+      break;
+    }
+    case 'workout-edit': openWorkoutEditSheet(el.dataset.cat); break;
+    case 'workout-edit-save': {
+      const lines = document.getElementById('weEx').value.split('\n').map(s => s.trim()).filter(Boolean);
+      const ex = lines.map(l => {
+        const p = l.split(/\s+[–\-|]\s+/);
+        return [p[0].trim(), (p[1] || '').trim() || 'nach Gefühl'];
+      });
+      if (!ex.length) { toast('Mindestens eine Übung angeben'); break; }
+      const ts = trainingState();
+      if (!ts.custom[me()]) ts.custom[me()] = {};
+      ts.custom[me()][el.dataset.cat] = { ex };
+      save(); closeSheet(); openWorkoutSheet(el.dataset.cat); toast('Gespeichert – dein Workout');
+      break;
+    }
+    case 'workout-edit-reset': {
+      const ts = trainingState();
+      if (ts.custom[me()]) delete ts.custom[me()][el.dataset.cat];
+      save(); closeSheet(); openWorkoutSheet(el.dataset.cat); toast('Standard wiederhergestellt');
+      break;
+    }
     case 'training-move-to': {
       const entries = trainingWeekEntries(me(), el.dataset.mon) || [];
       const e = entries.find(x => x.day === Number(el.dataset.from));

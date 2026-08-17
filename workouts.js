@@ -240,9 +240,13 @@ const WORKOUT_CATS = {
   'paar-kraft30': () => PAAR_WORKOUTS[2],
   'paar-spass30': () => PAAR_WORKOUTS[3],
 };
-function workoutByCat(cat) {
+function workoutByCat(cat, person) {
   const f = WORKOUT_CATS[cat];
-  return f ? f() : null;
+  if (!f) return null;
+  const base = f();
+  // Selbst angepasste Übungslisten haben Vorrang
+  const cust = person && DATA.training && DATA.training.custom && DATA.training.custom[person] && DATA.training.custom[person][cat];
+  return cust ? { ...base, ex: cust.ex, custom: true } : base;
 }
 /* Grobe Familie einer Kategorie – fürs Matchen gemeinsamer Einheiten */
 function workoutFamily(cat) {
@@ -265,9 +269,10 @@ const GOAL_NOTES = {
   beweglich: 'Ziel Beweglichkeit: Positionen ruhig halten, in die Dehnung atmen, nie in den Schmerz. Regelmäßigkeit schlägt Intensität.',
   fit: 'Ziel Fitness: Mischung aus Kraft (8–12 Wdh.) und Ausdauer. Grundübungen frei, Rest nach Lust – Hauptsache dranbleiben.',
 };
-function adaptWorkoutToGoal(cat, goal) {
-  const w = workoutByCat(cat);
+function adaptWorkoutToGoal(cat, goal, person) {
+  const w = workoutByCat(cat, person);
   if (!w) return null;
+  if (w.custom) return w; // eigene Anpassungen gelten unverändert
   if (!goal || !cat.startsWith('gym')) return w;
   const isCompound = name => COMPOUND.some(c => name.includes(c));
   const scheme = {
@@ -403,11 +408,18 @@ function trainingState() {
   if (!DATA.training) DATA.training = { plans: {}, week: {} };
   if (!DATA.training.plans) DATA.training.plans = {};
   if (!DATA.training.week) DATA.training.week = {};
+  if (!DATA.training.weekPrefs) DATA.training.weekPrefs = {};
+  if (!DATA.training.custom) DATA.training.custom = {};
   return DATA.training;
+}
+/* Wochen-Check-in: Wie oft und wo diese Woche? (überschreibt den Plan nur für diese Woche) */
+function trainingWeekPrefs(person, monISO) {
+  return trainingState().weekPrefs[monISO + ':' + person] || null;
 }
 /* Ist der Abend (16:30–21:30) durch einen Termin der Person belegt? */
 function trainingEveningBusy(iso, person) {
   return eventsOn(iso).some(e => {
+    if (e.src === 'training') return false; // eigene Trainings blockieren den Abend nicht
     if (!(e.who === person || e.who === 'beide' || e.src === 'ics')) return false;
     if (!e.time) return false;
     return e.time >= '16:30' && e.time <= '21:30';
@@ -450,11 +462,20 @@ function scheduleTrainingWeek(person, monISO) {
   const plan = ts.plans[person];
   if (!plan) return null;
   const stats = trainingLastWeekStats(person, monISO);
-  let sessions = plan.weekly.slice();
-  if (stats && stats.total >= 2 && stats.done / stats.total <= 0.5 && sessions.length > 2) {
-    // Überforderung vermeiden: die letzte lockere Einheit dieser Woche streichen
-    const dropIdx = sessions.map((s, i) => ({ s, i })).reverse().find(x => !x.s.cat.includes('intervall') && workoutFamily(x.s.cat) !== 'paar');
-    sessions.splice(dropIdx ? dropIdx.i : sessions.length - 1, 1);
+  const prefs = trainingWeekPrefs(person, monISO);
+  let sessions;
+  if (prefs && prefs.sessions && prefs.sessions.length) {
+    sessions = prefs.sessions.map(s => ({ ...s }));           // KI- oder handverlesene Woche
+  } else if (prefs && prefs.freq) {
+    // Wochen-Check-in: dieses Pensum, diese Orte – Ziele bleiben die des großen Plans
+    sessions = buildTrainingPlan({ goals: planGoals(plan), freq: prefs.freq, elements: prefs.elements && prefs.elements.length ? prefs.elements : plan.elements, duration: plan.duration }).weekly;
+  } else {
+    sessions = plan.weekly.slice();
+    if (stats && stats.total >= 2 && stats.done / stats.total <= 0.5 && sessions.length > 2) {
+      // Überforderung vermeiden: die letzte lockere Einheit dieser Woche streichen
+      const dropIdx = sessions.map((s, i) => ({ s, i })).reverse().find(x => !x.s.cat.includes('intervall') && workoutFamily(x.s.cat) !== 'paar');
+      sessions.splice(dropIdx ? dropIdx.i : sessions.length - 1, 1);
+    }
   }
   if (stats && stats.missedIntervall) {
     // Verpasste harte Einheit zuerst einplanen
@@ -559,8 +580,12 @@ function trainingCleanup() {
   const ts = trainingState();
   const cur = toISO(startOfWeek(new Date()));
   let changed = false;
+  const limit = toISO(addDays(new Date(cur + 'T12:00'), -28));
   for (const k of Object.keys(ts.week)) {
-    if (k.slice(0, 10) < toISO(addDays(new Date(cur + 'T12:00'), -21))) { delete ts.week[k]; changed = true; }
+    if (k.slice(0, 10) < limit) { delete ts.week[k]; changed = true; }
+  }
+  for (const k of Object.keys(ts.weekPrefs || {})) {
+    if (k.slice(0, 10) < limit) { delete ts.weekPrefs[k]; changed = true; }
   }
   return changed;
 }
