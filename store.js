@@ -174,20 +174,9 @@ function eventsOn(iso) {
   const specials = ((DATA.us && DATA.us.dates) || [])
     .filter(d => d.date && d.date.slice(5) === iso.slice(5))
     .map(d => ({ id: 'ud-' + d.id, title: d.title, date: iso, time: '', who: 'beide', src: 'special' }));
-  // Geplante Trainingseinheiten erscheinen automatisch im Kalender (nur lesen, nie hier planen)
-  const training = [];
-  if (DATA.training && DATA.training.week) {
-    const mon = toISO(startOfWeek(new Date(iso + 'T12:00')));
-    const dayIdx = Math.round((new Date(iso + 'T12:00') - new Date(mon + 'T12:00')) / 864e5);
-    for (const person of ['stefan', 'linda']) {
-      for (const e of DATA.training.week[mon + ':' + person] || []) {
-        if (e.day !== dayIdx) continue;
-        const zus = typeof trainingTogetherOn === 'function' ? trainingTogetherOn(person, mon, dayIdx, e.cat) : null;
-        training.push({ id: 'tr-' + person + '-' + iso, title: e.title + (zus ? ' · zusammen' : ''), date: iso, time: e.time || '', who: person, src: 'training', trDone: e.done });
-      }
-    }
-  }
-  return specials.concat(own.concat(ics).sort((a, b) => (a.time || '99') < (b.time || '99') ? -1 : 1)).concat(training);
+  // Trainingseinheiten stehen bewusst NICHT hier, sondern im eigenen Sportkalender
+  // (Training-Tab). Die Trainingsplanung liest diesen Kalender aber weiterhin mit.
+  return specials.concat(own.concat(ics).sort((a, b) => (a.time || '99') < (b.time || '99') ? -1 : 1));
 }
 function nextEvents(n = 3) {
   const out = [];

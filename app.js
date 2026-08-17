@@ -490,17 +490,9 @@ function calLegend() {
 
 function calEvRow(e, compact) {
   const borderColor = e.src === 'special' ? '#B98A3D' : WHO_COLOR(e.who);
-  const ic = e.src === 'special' ? 'star' : e.src === 'ics' ? 'case' : e.src === 'training' ? 'hantel' : 'cal';
-  const quelle = e.src === 'special' ? 'besonderer Tag' : e.src === 'ics' ? 'Outlook-Termin' : e.src === 'training' ? 'Trainingsplan' + (e.trDone ? ' · erledigt ✓' : '') : 'eingetragen';
+  const ic = e.src === 'special' ? 'star' : e.src === 'ics' ? 'case' : 'cal';
+  const quelle = e.src === 'special' ? 'besonderer Tag' : e.src === 'ics' ? 'Outlook-Termin' : 'eingetragen';
   const editable = !e.src;
-  if (e.src === 'training') {
-    return `<div class="row ${e.trDone ? 'done' : ''}" style="border-left:4px solid ${borderColor};${compact ? 'padding:9px 12px;margin-bottom:6px' : ''}" data-action="go-training">
-      <span class="ric">${icon('hantel', compact ? 16 : 18)}</span>
-      <div class="grow"><div class="title" ${compact ? 'style="font-size:14px"' : ''}>${esc(e.title)}</div>
-      <div class="meta">${quelle} · ${esc(nameOf(e.who))}</div></div>
-      ${whoChip(e.who)}
-    </div>`;
-  }
   return `<div class="row" style="border-left:4px solid ${borderColor};${compact ? 'padding:9px 12px;margin-bottom:6px' : ''}">
     <span class="ric" ${e.src === 'special' ? 'style="color:#B98A3D"' : ''}>${icon(ic, compact ? 16 : 18)}</span>
     <div class="grow" ${editable ? 'data-action="edit-event" data-id="' + e.id + '"' : ''}><div class="title" ${compact ? 'style="font-size:14px"' : ''}>${esc(e.title)}</div>
@@ -1108,6 +1100,35 @@ function renderTrainingTogether(mon) {
   const mine = ts.plans[me()] ? (trainingWeekEntries(me(), mon) || scheduleTrainingWeek(me(), mon)) : null;
   const theirs = ts.plans[partner()] ? (trainingWeekEntries(partner(), mon) || scheduleTrainingWeek(partner(), mon)) : null;
   let html = '';
+  // Euer Sportkalender: beide Wochen auf einen Blick (steht bewusst nicht im Haupt-Kalender)
+  html += `<h2 class="sect">Euer Sportkalender</h2>`;
+  const t0 = todayISO();
+  let anyCal = false;
+  let calHtml = '';
+  for (let d = 0; d < 7; d++) {
+    const iso = toISO(addDays(new Date(mon + 'T12:00'), d));
+    const rows = [];
+    for (const [person, entries] of [[me(), mine], [partner(), theirs]]) {
+      for (const e of entries || []) {
+        if (e.day !== d) continue;
+        const zus = trainingTogetherOn(person, mon, d, e.cat);
+        rows.push(`<div style="display:flex;align-items:center;gap:8px;font-size:13.5px;padding:2px 0">
+          <span class="dot ${person}"></span>
+          <span style="${e.done ? 'text-decoration:line-through;opacity:0.55' : ''}">${esc(nameOf(person))}: ${esc(e.title)}${e.time ? ' · ' + esc(e.time) : ''}</span>
+          ${e.done ? '<span style="color:var(--olive)">✓</span>' : ''}${zus ? ' <span style="color:#BC6A4A">♥</span>' : ''}
+        </div>`);
+      }
+    }
+    if (!rows.length) continue;
+    anyCal = true;
+    calHtml += `<div style="padding:8px 0;border-bottom:1px solid var(--line)">
+      <div style="font-weight:700;font-size:13px;${iso === t0 ? 'color:var(--olive)' : ''}">${fmtShort(iso)}${iso === t0 ? ' · heute' : ''}</div>
+      ${rows.join('')}
+    </div>`;
+  }
+  html += anyCal
+    ? `<div class="card" style="margin-bottom:14px;padding:6px 16px">${calHtml}</div>`
+    : `<div class="card" style="margin-bottom:14px"><p class="mut">Diese Woche sind noch keine Einheiten geplant.</p></div>`;
   if (!mine || !theirs) {
     html += `<div class="card"><p class="mut">${!mine ? 'Du hast' : esc(nameOf(partner())) + ' hat'} noch keinen Trainingsplan – sobald ihr beide einen habt, suche ich hier jede Woche eure gemeinsamen Trainingsmomente.</p></div>`;
   } else {
@@ -1266,6 +1287,8 @@ function openTrainingWizard() {
       <label style="display:flex;gap:10px;align-items:center"><input type="checkbox" id="tgAusdauer" ${gchk('ausdauer')}> Ausdauer verbessern</label>
       <label style="display:flex;gap:10px;align-items:center"><input type="checkbox" id="tgBeweglich" ${gchk('beweglich')}> Beweglicher werden</label>
     </div>
+    <label class="f">Konkretes Wunschziel? (optional, hilft der KI)</label>
+    <input class="f" id="twZiel" value="${esc(plan.zielText || '')}" placeholder="z. B. 100 kg Bankdrücken, 10 km am Stück laufen">
     <label class="f">Wie viel Trainingserfahrung hast du?</label>
     <select class="f" id="twLevel">
       <option value="anfaenger" ${el('anfaenger', plan.level)}>Wenig – ich fange (wieder) an</option>
@@ -1706,6 +1729,7 @@ function handleAction(a, el) {
       const opts = {
         goals,
         level: document.getElementById('twLevel').value,
+        zielText: document.getElementById('twZiel').value.trim(),
         fokus, limits,
         // Pensum und Orte kommen aus dem Wochen-Check-in; als Startwert: Empfehlung bzw. bisherige Gewohnheit
         freq: alt && alt.freq ? alt.freq : recommendedFreq(goals),
@@ -1773,10 +1797,16 @@ function handleAction(a, el) {
             const es = trainingState().week[wMon + ':' + me()] || [];
             if (es.length) history.push({ weeksAgo: wBack, done: es.filter(x => x.done).map(x => x.cat), missed: es.filter(x => !x.done).map(x => x.cat) });
           }
+          // Tagebuch-Auszug: die letzten Einträge der meistgenutzten Übungen (erkennt Stagnation)
+          const logAll = (trainingState().log && trainingState().log[me()]) || {};
+          const tagebuch = Object.entries(logAll)
+            .sort((a, b) => b[1].length - a[1].length).slice(0, 5)
+            .map(([name, arr]) => ({ uebung: name, letzte: arr.slice(-3) }));
           const r = await UZSync.invoke('ai', {
             mode: 'trainweek',
             goals: planGoals(plan), freq: prefs.freq, elements: prefs.elements,
             level: plan.level || '', fokus: plan.fokus || [], limits: plan.limits || [],
+            zielText: plan.zielText || '', tagebuch,
             lastWeek: stats, history, weekNumber: wkNr,
             freeEveningsNextWeek: trainingFreeEvenings(me(), toISO(addDays(new Date(mon + 'T12:00'), 7))),
           });
