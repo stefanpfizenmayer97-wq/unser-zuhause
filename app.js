@@ -252,6 +252,24 @@ function renderHome() {
   } else {
     html += `<div class="card" data-action="plan-datenight"><div class="hint">Nichts geplant in den nächsten Wochen – wie wär's mit einer Date-Night? Tippen zum Planen.</div></div>`;
   }
+
+  // Deine Trainingswoche in Kurzform
+  if (DATA.training && DATA.training.plans && DATA.training.plans[me()]) {
+    const trMon = toISO(startOfWeek(new Date()));
+    const trWeek = trainingWeekEntries(me(), trMon) || [];
+    if (trWeek.length) {
+      html += `<h2 class="sect">Deine Trainingswoche <span class="more" data-action="go-training">zum Training</span></h2>`;
+      for (const e of trWeek) {
+        const iso = toISO(addDays(new Date(trMon + 'T12:00'), e.day));
+        const zus = trainingTogetherOn(me(), trMon, e.day, e.cat);
+        html += `<div class="row ${e.done ? 'done' : ''}" data-action="go-training">
+          <span class="ric">${icon('hantel', 18)}</span>
+          <div class="grow"><div class="title">${esc(e.title)}${zus ? ' <span style="color:#BC6A4A">♥</span>' : ''}</div>
+          <div class="meta">${WD[e.day]}${iso === todayISO() ? ' · heute' : ''}${e.time ? ' · ' + esc(e.time) + ' Uhr' : ''}${e.done ? ' · geschafft ✓' : ''}${zus ? ' · mit ' + esc(nameOf(partner())) : ''}</div></div>
+        </div>`;
+      }
+    }
+  }
   return html;
 }
 
