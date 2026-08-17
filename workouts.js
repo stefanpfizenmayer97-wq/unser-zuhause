@@ -368,6 +368,10 @@ function buildTrainingPlan(opts) {
      4 Einheiten Ober-/Unterkörper, erst ab 5–6 Push/Pull/Beine. */
   const kraftSeq = n => {
     if (has('gym')) {
+      // Einsteiger fahren mit Ganzkörper A/B am besten – egal bei welcher Frequenz
+      if (opts.level === 'anfaenger') {
+        return Array.from({ length: n }, (_, i) => i % 2 ? 'gym-ganzkoerper-b' : 'gym-ganzkoerper');
+      }
       const splits = {
         1: ['gym-ganzkoerper'],
         2: ['gym-ganzkoerper', 'gym-ganzkoerper-b'],
@@ -435,6 +439,17 @@ function buildTrainingPlan(opts) {
     const w = workoutByCat(cat);
     return { day, cat, title: w ? w.name : cat, minutes: w ? w.minutes : 30 };
   });
+  // Fokus-Zone gewünscht? Ab 3 Einheiten bekommt sie einen eigenen Slot
+  if (opts.fokus && opts.fokus.length && weekly.length >= 3) {
+    const fkGym = { pobeine: 'gym-beinepo', bauch: 'gym-bauch', ruecken: 'gym-ruecken', arme: 'gym-schulternarme', schultern: 'gym-schulternarme' };
+    const fkHome = { pobeine: 'home-beine', bauch: 'home-bauch', arme: 'home-arme', schultern: 'home-arme', ruecken: 'home-ganzkoerper' };
+    const fcat = (has('gym') ? fkGym : fkHome)[opts.fokus[0]];
+    if (fcat) {
+      // die letzte Kraft-Einheit wird zur Fokus-Einheit
+      const slot = weekly.slice().reverse().find(s => workoutFamily(s.cat) === 'kraft' && s.cat !== fcat);
+      if (slot) { const w = workoutByCat(fcat); slot.cat = fcat; slot.title = w.name; slot.minutes = w.minutes; }
+    }
+  }
   // Paar-Workout gewünscht? Eine Einheit pro Woche ersetzen
   if (has('paar') && weekly.length) {
     const p = PAAR_WORKOUTS[Math.floor(days.length / 2) % PAAR_WORKOUTS.length];
@@ -448,8 +463,23 @@ function buildTrainingPlan(opts) {
     beweglich: 'Beweglichkeit: Lieber 10 Minuten regelmäßig als 1 Stunde selten.',
     fit: 'Fitness: Kraft und Ausdauer im Wechsel, Pausentage ernst nehmen.',
   };
-  return { weekly, progression: goals.map(g => prog[g] || '').filter(Boolean).join(' ') };
+  let progression = goals.map(g => prog[g] || '').filter(Boolean).join(' ');
+  if (opts.level === 'anfaenger') progression = 'Am Anfang zählt Technik vor Gewicht: Erst wenn alle Wiederholungen sauber sind, wird gesteigert. ' + progression;
+  return { weekly, progression };
 }
+/* Empfohlenes Wochen-Pensum aus den Zielen – der Wochen-Check-in passt es laufend an */
+function recommendedFreq(goals) {
+  let f = 3;
+  if (goals.length >= 2) f = 4;
+  if (goals.length === 1 && goals[0] === 'beweglich') f = 3;
+  return Math.min(5, Math.max(2, f));
+}
+/* Hinweise bei körperlichen Einschränkungen, passend zum Workout */
+const LIMIT_HINTS = {
+  knie: { match: c => /beine|beinepo|unterkoerper|sprungkraft|ganzkoerper/.test(c), text: 'Knie schonen: Kniebeugen nur so tief, wie es schmerzfrei geht, Sprünge weglassen – Beinpresse und Hip Thrust sind die knieschonenden Alternativen.' },
+  ruecken: { match: c => /pull|unterkoerper|ganzkoerper|ruecken/.test(c), text: 'Rücken schonen: Kreuzheben durch Beinpresse/Rudern an der Maschine ersetzen, Bauchspannung halten, kein Reißen – im Zweifel weniger Gewicht.' },
+  schulter: { match: c => /push|oberkoerper|brust|schulternarme|arme/.test(c), text: 'Schulter schonen: Nicht hinter den Nacken drücken, Seitheben nur bis Schulterhöhe, bei Schmerz auf Maschinen mit geführter Bahn wechseln.' },
+};
 /* Ziele eines Plans (alt: plan.goal, neu: plan.goals) */
 function planGoals(plan) {
   if (!plan) return [];
@@ -530,7 +560,7 @@ function scheduleTrainingWeek(person, monISO) {
     sessions = prefs.sessions.map(s => ({ ...s }));           // KI- oder handverlesene Woche
   } else if (prefs && prefs.freq) {
     // Wochen-Check-in: dieses Pensum, diese Orte – Ziele bleiben die des großen Plans
-    sessions = buildTrainingPlan({ goals: planGoals(plan), freq: prefs.freq, elements: prefs.elements && prefs.elements.length ? prefs.elements : plan.elements, duration: plan.duration }).weekly;
+    sessions = buildTrainingPlan({ goals: planGoals(plan), freq: prefs.freq, elements: prefs.elements && prefs.elements.length ? prefs.elements : plan.elements, level: plan.level, fokus: plan.fokus }).weekly;
   } else {
     sessions = plan.weekly.slice();
     if (stats && stats.total >= 2 && stats.done / stats.total <= 0.5 && sessions.length > 2) {

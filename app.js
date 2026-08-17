@@ -1015,9 +1015,8 @@ function renderTrainingWeek(mon) {
   const entries = trainingWeekEntries(me(), mon) || scheduleTrainingWeek(me(), mon);
   const t = todayISO();
   const wk = Math.max(1, Math.floor((new Date(t) - new Date(plan.startISO)) / (7 * 864e5)) + 1);
-  const total = plan.duration === '3m' ? 13 : 4;
   let html = `<div class="card sand" style="margin-bottom:12px">
-    <b>${esc(planGoals(plan).map(g => GOAL_LABEL[g] || g).join(' + ') || 'Mein Plan')}</b> · ${plan.freq}× pro Woche · Woche ${Math.min(wk, total)} von ${total}
+    <b>${esc(planGoals(plan).map(g => GOAL_LABEL[g] || g).join(' + ') || 'Mein Plan')}</b> · Woche ${wk} · zuletzt ${plan.freq}× pro Woche
     <div class="hint" style="margin-top:6px">${esc(plan.progression)}</div>
   </div>`;
   // Wochen-Check-in: einmal pro Woche kurz bestätigen oder anpassen
@@ -1046,7 +1045,7 @@ function renderTrainingWeek(mon) {
     if (stats.missedIntervall) analyse.push('Die verpasste Intervalleinheit habe ich nach vorn gelegt.');
   }
   if (wk > 1 && wk % 4 === 0 && planGoals(plan).some(g => g === 'staerker' || g === 'masse' || g === 'ausdauer')) {
-    analyse.push('Woche ' + Math.min(wk, total) + ' ist deine Deload-Woche: gleiche Einheiten, aber nur ~70 % vom Gewicht bzw. Umfang – so verarbeitet der Körper den Fortschritt.');
+    analyse.push('Woche ' + wk + ' ist deine Deload-Woche: gleiche Einheiten, aber nur ~70 % vom Gewicht bzw. Umfang – so verarbeitet der Körper den Fortschritt.');
   }
   if (nextFree < plan.freq) analyse.push('Ausblick: Nächste Woche wird eng (' + nextFree + ' freie Abende für ' + plan.freq + ' Einheiten) – ich plane dann automatisch um.');
   if (analyse.length) html += `<div class="card" style="margin-bottom:12px;font-size:13px;line-height:1.5">${icon('spark', 14)} ${esc(analyse.join(' '))}</div>`;
@@ -1185,6 +1184,7 @@ function openWorkoutSheet(cat, mon, day) {
     <h2>${esc(w.name)}</h2>
     <p class="mut">~${w.minutes} Min. · ${esc(w.rounds)}</p>
     ${note ? '<div class="card sand" style="margin-bottom:10px;font-size:13px">' + esc(note) + '</div>' : ''}
+    ${(plan && plan.limits ? plan.limits : []).filter(l => LIMIT_HINTS[l] && LIMIT_HINTS[l].match(cat)).map(l => '<div class="card" style="margin-bottom:10px;font-size:13px;border-left:4px solid #A54B32">' + esc(LIMIT_HINTS[l].text) + '</div>').join('')}
     ${cat.startsWith('gym') && cat !== 'gym-ausdauer' ? '<div class="hint" style="margin-bottom:10px">Aufwärmen: 5 Min. locker (Rad/Rudern) + 1–2 leichte Aufwärmsätze der ersten Übung.</div>' : ''}
     ${w.ex.map(([n, v]) => '<div class="row" data-action="exercise-open" data-name="' + esc(n) + '" data-cat="' + cat + '"' + (mon !== undefined ? ' data-mon="' + mon + '" data-day="' + day + '"' : '') + '><span class="ric">' + icon('hantel', 16) + '</span><div class="grow"><div class="title">' + esc(n) + '</div></div><span class="meta">' + esc(v) + '</span></div>').join('')}
     <p class="hint" style="margin-top:6px">Übung antippen: Erklärung${cat.startsWith('gym') ? ' + Gewichts-Tagebuch' : ''}.</p>
@@ -1266,26 +1266,26 @@ function openTrainingWizard() {
       <label style="display:flex;gap:10px;align-items:center"><input type="checkbox" id="tgAusdauer" ${gchk('ausdauer')}> Ausdauer verbessern</label>
       <label style="display:flex;gap:10px;align-items:center"><input type="checkbox" id="tgBeweglich" ${gchk('beweglich')}> Beweglicher werden</label>
     </div>
-    <p class="hint" style="margin-top:6px">Empfehlung: Kraft/Muskelaufbau 3–4× · Ausdauer 3× · kombinierte Ziele 4–5×. Wähle, was realistisch ist – dazunehmen oder weglassen geht jede Woche spontan.</p>
-    <div class="frow">
-      <div><label class="f">Wie oft pro Woche?</label>
-        <select class="f" id="twFreq">${[2, 3, 4, 5, 6, 7].map(n => '<option value="' + n + '" ' + (plan.freq === n ? 'selected' : '') + '>' + n + '×</option>').join('')}</select></div>
-      <div><label class="f">Wie lange?</label>
-        <select class="f" id="twDuration">
-          <option value="1m" ${el('1m', plan.duration)}>1 Monat</option>
-          <option value="3m" ${el('3m', plan.duration)}>3 Monate</option>
-        </select></div>
-    </div>
-    <label class="f">Womit willst du trainieren?</label>
+    <label class="f">Wie viel Trainingserfahrung hast du?</label>
+    <select class="f" id="twLevel">
+      <option value="anfaenger" ${el('anfaenger', plan.level)}>Wenig – ich fange (wieder) an</option>
+      <option value="fortgeschritten" ${!plan.level || plan.level === 'fortgeschritten' ? 'selected' : ''}>Etwas – ich trainiere ab und zu</option>
+      <option value="profi" ${el('profi', plan.level)}>Viel – ich trainiere regelmäßig</option>
+    </select>
+    <label class="f">Gibt es Zonen, die extra Aufmerksamkeit kriegen sollen?</label>
     <div class="card" style="display:flex;flex-direction:column;gap:10px;font-size:14px">
-      <label style="display:flex;gap:10px;align-items:center"><input type="checkbox" id="twHome" ${chk('home')}> Zuhause (ohne Geräte)</label>
-      <label style="display:flex;gap:10px;align-items:center"><input type="checkbox" id="twGym" ${chk('gym')}> Fitnessstudio</label>
-      <label style="display:flex;gap:10px;align-items:center"><input type="checkbox" id="twPaar" ${chk('paar')}> Paar-Workouts mit ${esc(nameOf(partner()))}</label>
-      <label style="display:flex;gap:10px;align-items:center"><input type="checkbox" id="twJoggen" ${chk('joggen')}> Joggen</label>
-      <label style="display:flex;gap:10px;align-items:center"><input type="checkbox" id="twRad" ${chk('radfahren')}> Radfahren</label>
-      <label style="display:flex;gap:10px;align-items:center"><input type="checkbox" id="twSchwimmen" ${chk('schwimmen')}> Schwimmen</label>
+      <label style="display:flex;gap:10px;align-items:center"><input type="checkbox" id="tfPobeine" ${(plan.fokus || []).includes('pobeine') ? 'checked' : ''}> Po & Beine</label>
+      <label style="display:flex;gap:10px;align-items:center"><input type="checkbox" id="tfBauch" ${(plan.fokus || []).includes('bauch') ? 'checked' : ''}> Bauch & Core</label>
+      <label style="display:flex;gap:10px;align-items:center"><input type="checkbox" id="tfRuecken" ${(plan.fokus || []).includes('ruecken') ? 'checked' : ''}> Rücken</label>
+      <label style="display:flex;gap:10px;align-items:center"><input type="checkbox" id="tfArme" ${(plan.fokus || []).includes('arme') ? 'checked' : ''}> Arme & Schultern</label>
     </div>
-    <p class="hint" style="margin-top:8px">Die Tage lege ich jede Woche neu – passend zu eurem Kalender. Du kannst jede Einheit jederzeit verschieben.</p>
+    <label class="f">Worauf muss ich Rücksicht nehmen?</label>
+    <div class="card" style="display:flex;flex-direction:column;gap:10px;font-size:14px">
+      <label style="display:flex;gap:10px;align-items:center"><input type="checkbox" id="tlKnie" ${(plan.limits || []).includes('knie') ? 'checked' : ''}> Knie</label>
+      <label style="display:flex;gap:10px;align-items:center"><input type="checkbox" id="tlRuecken" ${(plan.limits || []).includes('ruecken') ? 'checked' : ''}> Rücken</label>
+      <label style="display:flex;gap:10px;align-items:center"><input type="checkbox" id="tlSchulter" ${(plan.limits || []).includes('schulter') ? 'checked' : ''}> Schulter</label>
+    </div>
+    <p class="hint" style="margin-top:8px">Wie oft und wo du trainierst, fragst du nicht hier ein für alle Mal ab – das klärt der Wochen-Check-in jede Woche neu. Der Plan merkt sich, was bei dir üblich ist.</p>
     <div style="margin-top:12px;display:flex;flex-direction:column;gap:8px">
       <button class="btn full" data-action="training-create">${icon('spark', 16)} Plan erstellen</button>
       ${trainingState().plans[me()] ? '<button class="btn danger small full" data-action="training-delete">Plan löschen</button>' : ''}
@@ -1364,6 +1364,14 @@ function applyWeekPrefs(prefs) {
   const ts = trainingState();
   const mon = toISO(startOfWeek(new Date()));
   ts.weekPrefs[mon + ':' + me()] = prefs;
+  // Der Plan merkt sich dein übliches Pensum als Startwert für kommende Wochen
+  const plan = ts.plans[me()];
+  if (plan && prefs.freq) {
+    plan.freq = prefs.freq;
+    if (prefs.elements && prefs.elements.length) plan.elements = prefs.elements;
+    const gen = buildTrainingPlan({ goals: planGoals(plan), freq: plan.freq, elements: plan.elements, level: plan.level, fokus: plan.fokus });
+    plan.weekly = gen.weekly;
+  }
   delete ts.week[mon + ':' + me()];
   scheduleTrainingWeek(me(), mon);
   save(); closeSheet(); state.training = 'woche'; render();
@@ -1684,28 +1692,33 @@ function handleAction(a, el) {
       if (document.getElementById('tgAusdauer').checked) goals.push('ausdauer');
       if (document.getElementById('tgBeweglich').checked) goals.push('beweglich');
       if (!goals.length) { toast('Wähle mindestens ein Ziel aus'); break; }
-      const elements = [];
-      if (document.getElementById('twHome').checked) elements.push('home');
-      if (document.getElementById('twGym').checked) elements.push('gym');
-      if (document.getElementById('twPaar').checked) elements.push('paar');
-      if (document.getElementById('twJoggen').checked) elements.push('joggen');
-      if (document.getElementById('twRad').checked) elements.push('radfahren');
-      if (document.getElementById('twSchwimmen').checked) elements.push('schwimmen');
-      if (!elements.length) { toast('Wähle mindestens ein Element aus'); break; }
+      const fokus = [];
+      if (document.getElementById('tfPobeine').checked) fokus.push('pobeine');
+      if (document.getElementById('tfBauch').checked) fokus.push('bauch');
+      if (document.getElementById('tfRuecken').checked) fokus.push('ruecken');
+      if (document.getElementById('tfArme').checked) fokus.push('arme');
+      const limits = [];
+      if (document.getElementById('tlKnie').checked) limits.push('knie');
+      if (document.getElementById('tlRuecken').checked) limits.push('ruecken');
+      if (document.getElementById('tlSchulter').checked) limits.push('schulter');
+      const ts = trainingState();
+      const alt = ts.plans[me()];
       const opts = {
         goals,
-        freq: Number(document.getElementById('twFreq').value),
-        duration: document.getElementById('twDuration').value,
-        elements,
+        level: document.getElementById('twLevel').value,
+        fokus, limits,
+        // Pensum und Orte kommen aus dem Wochen-Check-in; als Startwert: Empfehlung bzw. bisherige Gewohnheit
+        freq: alt && alt.freq ? alt.freq : recommendedFreq(goals),
+        elements: alt && alt.elements && alt.elements.length ? alt.elements : ['gym', 'home'],
       };
       const gen = buildTrainingPlan(opts);
-      const ts = trainingState();
-      ts.plans[me()] = { ...opts, startISO: todayISO(), weekly: gen.weekly, progression: gen.progression };
+      ts.plans[me()] = { ...opts, startISO: alt ? alt.startISO : todayISO(), weekly: gen.weekly, progression: gen.progression };
       // aktuelle Woche neu legen
       delete ts.week[toISO(startOfWeek(new Date())) + ':' + me()];
       scheduleTrainingWeek(me(), toISO(startOfWeek(new Date())));
-      save(); closeSheet(); state.training = 'woche'; render(); toast('Dein Plan steht!');
-      pingPartner(nameOf(me()) + ' hat einen Trainingsplan', goals.map(g => GOAL_LABEL[g] || g).join(' + ') + ' · ' + opts.freq + '× pro Woche' + (elements.includes('paar') ? ' – mit Paar-Workouts!' : ''));
+      save(); closeSheet(); state.training = 'woche'; render();
+      pingPartner(nameOf(me()) + ' hat einen Trainingsplan', goals.map(g => GOAL_LABEL[g] || g).join(' + '));
+      openTrainingWeekSheet(); toast('Ziele stehen – und wie sieht diese Woche aus?');
       break;
     }
     case 'training-delete': {
@@ -1763,6 +1776,7 @@ function handleAction(a, el) {
           const r = await UZSync.invoke('ai', {
             mode: 'trainweek',
             goals: planGoals(plan), freq: prefs.freq, elements: prefs.elements,
+            level: plan.level || '', fokus: plan.fokus || [], limits: plan.limits || [],
             lastWeek: stats, history, weekNumber: wkNr,
             freeEveningsNextWeek: trainingFreeEvenings(me(), toISO(addDays(new Date(mon + 'T12:00'), 7))),
           });
