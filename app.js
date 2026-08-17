@@ -83,6 +83,15 @@ function emptyState(ic, text) {
 
 /* ---------- Render ---------- */
 function render() {
+  // Trainingswoche liegt immer bereit, damit sie im Kalender erscheint
+  try {
+    if (typeof scheduleTrainingWeek === 'function' && DATA.training && DATA.training.plans) {
+      const trMon = toISO(startOfWeek(new Date()));
+      for (const p of ['stefan', 'linda']) {
+        if (DATA.training.plans[p] && !DATA.training.week[trMon + ':' + p]) scheduleTrainingWeek(p, trMon);
+      }
+    }
+  } catch (e) { console.warn('Trainingsplanung übersprungen:', e.message); }
   document.body.classList.toggle('chatmode', state.tab === 'chat');
   if (state.tab === 'chat' && unreadCount() > 0) markChatRead(); // im offenen Chat gilt alles als gelesen
   document.querySelectorAll('#tabbar button').forEach(b => b.classList.toggle('active', b.dataset.tab === state.tab));
@@ -227,7 +236,7 @@ function renderHome() {
   const upcoming = [];
   for (let i = 1; i <= 30 && upcoming.length < 5; i++) {
     const iso = toISO(addDays(new Date(), i));
-    for (const e of eventsOn(iso).filter(mine)) {
+    for (const e of eventsOn(iso).filter(x => mine(x) && x.src !== 'training')) {
       if (upcoming.length < 5) upcoming.push(e);
     }
   }
@@ -481,9 +490,17 @@ function calLegend() {
 
 function calEvRow(e, compact) {
   const borderColor = e.src === 'special' ? '#B98A3D' : WHO_COLOR(e.who);
-  const ic = e.src === 'special' ? 'star' : e.src === 'ics' ? 'case' : 'cal';
-  const quelle = e.src === 'special' ? 'besonderer Tag' : e.src === 'ics' ? 'Outlook-Termin' : 'eingetragen';
+  const ic = e.src === 'special' ? 'star' : e.src === 'ics' ? 'case' : e.src === 'training' ? 'hantel' : 'cal';
+  const quelle = e.src === 'special' ? 'besonderer Tag' : e.src === 'ics' ? 'Outlook-Termin' : e.src === 'training' ? 'Trainingsplan' + (e.trDone ? ' · erledigt ✓' : '') : 'eingetragen';
   const editable = !e.src;
+  if (e.src === 'training') {
+    return `<div class="row ${e.trDone ? 'done' : ''}" style="border-left:4px solid ${borderColor};${compact ? 'padding:9px 12px;margin-bottom:6px' : ''}" data-action="go-training">
+      <span class="ric">${icon('hantel', compact ? 16 : 18)}</span>
+      <div class="grow"><div class="title" ${compact ? 'style="font-size:14px"' : ''}>${esc(e.title)}</div>
+      <div class="meta">${quelle} · ${esc(nameOf(e.who))}</div></div>
+      ${whoChip(e.who)}
+    </div>`;
+  }
   return `<div class="row" style="border-left:4px solid ${borderColor};${compact ? 'padding:9px 12px;margin-bottom:6px' : ''}">
     <span class="ric" ${e.src === 'special' ? 'style="color:#B98A3D"' : ''}>${icon(ic, compact ? 16 : 18)}</span>
     <div class="grow" ${editable ? 'data-action="edit-event" data-id="' + e.id + '"' : ''}><div class="title" ${compact ? 'style="font-size:14px"' : ''}>${esc(e.title)}</div>
@@ -1066,7 +1083,7 @@ function renderWorkoutLib() {
 function renderTrainingTogether(mon) {
   const ts = trainingState();
   const mine = ts.plans[me()] ? (trainingWeekEntries(me(), mon) || scheduleTrainingWeek(me(), mon)) : null;
-  const theirs = ts.plans[partner()] ? trainingWeekEntries(partner(), mon) : null;
+  const theirs = ts.plans[partner()] ? (trainingWeekEntries(partner(), mon) || scheduleTrainingWeek(partner(), mon)) : null;
   let html = '';
   if (!mine || !theirs) {
     html += `<div class="card"><p class="mut">${!mine ? 'Du hast' : esc(nameOf(partner())) + ' hat'} noch keinen Trainingsplan – sobald ihr beide einen habt, suche ich hier jede Woche eure gemeinsamen Trainingsmomente.</p></div>`;
@@ -1090,6 +1107,25 @@ function renderTrainingTogether(mon) {
         suggestions.push({ fam: famOf(m), day: bestDay, title: famOf(m) === 'paar' ? m.title : 'Gemeinsam: ' + m.title, cat: m.cat });
       }
       if (suggestions.length >= 2) break;
+    }
+    // Tage, an denen beide trainieren – automatisch zusammengelegt von der Wochenplanung
+    const sameDays = [];
+    for (let d = 0; d < 7; d++) {
+      const m = mine.find(e => e.day === d), th = theirs.find(e => e.day === d);
+      if (m && th) sameDays.push({ d, m, th });
+    }
+    if (sameDays.length) {
+      html += `<h2 class="sect">Eure gemeinsamen Trainingstage</h2>`;
+      for (const s of sameDays) {
+        const iso = toISO(addDays(new Date(mon + 'T12:00'), s.d));
+        const beideGym = s.m.cat.startsWith('gym') && s.th.cat.startsWith('gym');
+        const zeile = beideGym ? 'Ihr könnt zusammen ins Gym fahren.' : 'Verschiedenes Training – aber zur gleichen Zeit.';
+        html += `<div class="card" style="margin-bottom:8px">
+          <b>${WD[s.d]}</b> · Du: ${esc(s.m.title)} · ${esc(nameOf(partner()))}: ${esc(s.th.title)}
+          <div class="hint" style="margin:4px 0 10px">${zeile}</div>
+          ${iso >= t ? '<button class="btn ghost small full" data-action="training-together" data-iso="' + iso + '" data-title="Gemeinsame Trainingszeit" data-cat="' + s.m.cat + '">' + icon('cal', 14) + ' ' + WD[s.d] + ' 19:00 als festen Termin eintragen</button>' : ''}
+        </div>`;
+      }
     }
     if (suggestions.length) {
       html += `<h2 class="sect">Diese Woche zusammen?</h2>`;

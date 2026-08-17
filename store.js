@@ -174,12 +174,23 @@ function eventsOn(iso) {
   const specials = ((DATA.us && DATA.us.dates) || [])
     .filter(d => d.date && d.date.slice(5) === iso.slice(5))
     .map(d => ({ id: 'ud-' + d.id, title: d.title, date: iso, time: '', who: 'beide', src: 'special' }));
-  return specials.concat(own.concat(ics).sort((a, b) => (a.time || '99') < (b.time || '99') ? -1 : 1));
+  // Geplante Trainingseinheiten erscheinen automatisch im Kalender (nur lesen, nie hier planen)
+  const training = [];
+  if (DATA.training && DATA.training.week) {
+    const mon = toISO(startOfWeek(new Date(iso + 'T12:00')));
+    const dayIdx = Math.round((new Date(iso + 'T12:00') - new Date(mon + 'T12:00')) / 864e5);
+    for (const person of ['stefan', 'linda']) {
+      for (const e of DATA.training.week[mon + ':' + person] || []) {
+        if (e.day === dayIdx) training.push({ id: 'tr-' + person + '-' + iso, title: e.title, date: iso, time: '', who: person, src: 'training', trDone: e.done });
+      }
+    }
+  }
+  return specials.concat(own.concat(ics).sort((a, b) => (a.time || '99') < (b.time || '99') ? -1 : 1)).concat(training);
 }
 function nextEvents(n = 3) {
   const out = [];
   for (let i = 0; i < 60 && out.length < n + 8; i++) {
-    out.push(...eventsOn(toISO(addDays(new Date(), i))));
+    out.push(...eventsOn(toISO(addDays(new Date(), i))).filter(e => e.src !== 'training'));
   }
   return out.slice(0, n);
 }

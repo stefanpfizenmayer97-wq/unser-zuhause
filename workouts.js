@@ -467,6 +467,11 @@ function scheduleTrainingWeek(person, monISO) {
     for (let i = 0; i < 7; i++) if (toISO(addDays(new Date(monISO + 'T12:00'), i)) === t) return i;
     return -1;
   })();
+  // Partnerwoche schon geplant? Dann Trainingstage aktiv zusammenlegen:
+  // gleiche Umgebung (beide Gym / gleiche Cardio-Art) = zusammen hinfahren,
+  // sonst wenigstens am selben Abend trainieren.
+  const other = person === 'stefan' ? 'linda' : 'stefan';
+  const partnerEntries = ts.week[monISO + ':' + other] || [];
   for (const s of sessions) {
     let best = -1, bestScore = -Infinity;
     for (let d = 0; d < 7; d++) {
@@ -481,6 +486,13 @@ function scheduleTrainingWeek(person, monISO) {
       if (fam === 'kraft' && entries.some(e => workoutFamily(e.cat) === 'kraft' && Math.abs(e.day - d) === 1)) score -= 2; // Regeneration
       if (hart(s.cat) && entries.some(e => hart(e.cat) && Math.abs(e.day - d) === 1)) score -= 1; // harte Einheiten spreizen
       if (fam === 'paar' && d >= 4) score += 1;                        // Paar-Workout eher Richtung Wochenende
+      const p = partnerEntries.find(e => e.day === d);
+      if (p) {
+        score += 2;                                                    // gleiche Zeit wie der Partner
+        if (s.cat.startsWith('gym') && p.cat.startsWith('gym')) score += 2;          // beide im Gym
+        else if (s.cat.split('-')[1] === (p.cat || '').split('-')[1]) score += 1;    // gleiche Sportart
+        if (fam === 'paar') score += 2;                                // Paar-Workout braucht beide sowieso
+      }
       if (score > bestScore) { bestScore = score; best = d; }
     }
     taken.add(best);
