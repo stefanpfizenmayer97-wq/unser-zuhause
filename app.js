@@ -1074,12 +1074,13 @@ function renderTrainingWeek(mon) {
       <span class="more" data-action="training-move" data-mon="${mon}" data-day="${e.day}">schieben</span>
     </div>`;
   }
-  html += `<div style="display:flex;gap:8px;margin-top:14px">
+  html += `<button class="btn small full" style="margin-top:14px" data-action="training-week-adjust">${icon('pen', 14)} Diese Woche ändern: Wie oft &amp; wo (Gym, zuhause, Rad …)</button>
+  <div style="display:flex;gap:8px;margin-top:8px">
     <button class="btn ghost small" style="flex:1" data-action="training-extra">${icon('plus', 14)} Extra-Einheit</button>
     <button class="btn ghost small" style="flex:1" data-action="training-log-past">Nachtragen</button>
   </div>
   <div style="display:flex;gap:8px;margin-top:8px">
-    <button class="btn ghost small" style="flex:1" data-action="training-wizard">Plan anpassen</button>
+    <button class="btn ghost small" style="flex:1" data-action="training-wizard">Langfrist-Plan anpassen</button>
     <button class="btn ghost small" style="flex:1" data-action="training-replan">Woche neu legen</button>
   </div>`;
   return html;
@@ -1185,7 +1186,7 @@ function renderTrainingTogether(mon) {
         html += `<div class="card" style="margin-bottom:8px">
           <b>${WD[s.d]}</b> · Du: ${esc(s.m.title)} · ${esc(nameOf(partner()))}: ${esc(s.th.title)}
           <div class="hint" style="margin:4px 0 10px">${zeile}</div>
-          ${iso >= t ? '<button class="btn ghost small full" data-action="training-together" data-iso="' + iso + '" data-title="Gemeinsame Trainingszeit" data-cat="' + s.m.cat + '">' + icon('cal', 14) + ' ' + WD[s.d] + ' 19:00 als festen Termin eintragen</button>' : ''}
+          ${iso >= t ? '<button class="btn ghost small full" data-action="training-together" data-iso="' + iso + '" data-title="Gemeinsame Trainingszeit" data-cat="' + s.m.cat + '">' + icon('cal', 14) + ' Am ' + WD[s.d] + ' als festen Termin eintragen</button>' : ''}
         </div>`;
       }
     }
@@ -1196,7 +1197,7 @@ function renderTrainingTogether(mon) {
         html += `<div class="card" style="margin-bottom:8px">
           <b>${esc(s.title)}</b>
           <div class="hint" style="margin:4px 0 10px">Ihr habt beide ${s.fam === 'paar' ? 'ein Paar-Workout' : s.fam + '-Training'} auf dem Plan – am ${WD[s.day]} (${fmtShort(iso)}) habt ihr laut Kalender beide abends frei.</div>
-          <button class="btn small full" data-action="training-together" data-iso="${iso}" data-title="${esc(s.title)}" data-cat="${s.cat}">${icon('cal', 15)} ${WD[s.day]} 19:00 gemeinsam eintragen</button>
+          <button class="btn small full" data-action="training-together" data-iso="${iso}" data-title="${esc(s.title)}" data-cat="${s.cat}">${icon('cal', 15)} Am ${WD[s.day]} gemeinsam eintragen</button>
         </div>`;
       }
     } else {
@@ -1977,9 +1978,20 @@ function handleAction(a, el) {
       break;
     }
     case 'training-together': {
-      DATA.events.push({ id: uid(), title: el.dataset.title, date: el.dataset.iso, time: '19:00', who: 'beide', repeat: '' });
-      save(); render(); toast('Gemeinsames Training steht im Kalender');
-      pingPartner('Gemeinsames Training?', el.dataset.title + ' · ' + fmtShort(el.dataset.iso) + ', 19:00 Uhr – ' + nameOf(me()) + ' hat es eingetragen');
+      openSheet(`
+        <h2>${esc(el.dataset.title)}</h2>
+        <p class="mut">${esc(fmtNice(el.dataset.iso))} · kommt als gemeinsamer Termin in den Kalender.</p>
+        <label class="f">Um wie viel Uhr?</label>
+        <input class="f" type="time" id="ttTime" value="19:00">
+        <button class="btn full" style="margin-top:12px" data-action="training-together-save" data-iso="${el.dataset.iso}" data-title="${esc(el.dataset.title)}">${icon('cal', 15)} Eintragen</button>
+      `);
+      break;
+    }
+    case 'training-together-save': {
+      const time = document.getElementById('ttTime').value || '19:00';
+      DATA.events.push({ id: uid(), title: el.dataset.title, date: el.dataset.iso, time, who: 'beide', repeat: '' });
+      save(); closeSheet(); render(); toast('Gemeinsames Training steht im Kalender');
+      pingPartner('Gemeinsames Training?', el.dataset.title + ' · ' + fmtShort(el.dataset.iso) + ', ' + time + ' Uhr – ' + nameOf(me()) + ' hat es eingetragen');
       break;
     }
 
