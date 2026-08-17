@@ -138,6 +138,37 @@ const GYM_PLANS = {
     ['Beinpresse', '3×12'],
     ['Bauch: Kabel-Crunches', '2×15'],
   ]},
+  beinepo: { name: 'Gym: Beine & Po', minutes: 45, rounds: '3 Sätze, 90 Sek. Pause – Po-Übungen mit voller Streckung oben, bewusst anspannen', ex: [
+    ['Hip Thrust (Langhantel)', '3×8–12'],
+    ['Rumänisches Kreuzheben', '3×10'],
+    ['Bulgarian Split Squats', '3×10 je Seite'],
+    ['Beinpresse (Füße hoch angesetzt)', '3×12'],
+    ['Abduktion an der Maschine', '3×15'],
+    ['Wadenheben stehend', '3×15'],
+  ]},
+  brust: { name: 'Gym: Brust & Trizeps', minutes: 45, rounds: '3 Sätze, 90–120 Sek. Pause – für 5-6× Training pro Woche', ex: [
+    ['Bankdrücken', '3×6–8'],
+    ['Schrägbank Kurzhanteln', '3×10'],
+    ['Fliegende am Kabel', '3×12–15'],
+    ['Dips', '3×max.'],
+    ['Trizeps am Kabel', '3×12'],
+  ]},
+  ruecken: { name: 'Gym: Rücken & Bizeps', minutes: 45, rounds: '3 Sätze, 90–120 Sek. Pause – für 5-6× Training pro Woche', ex: [
+    ['Klimmzüge oder Latzug', '3×8'],
+    ['Langhantel-Rudern', '3×10'],
+    ['Rudern am Kabel (enger Griff)', '3×12'],
+    ['Face Pulls', '3×15'],
+    ['Bizeps-Curls Langhantel', '3×10'],
+    ['Hammer-Curls', '2×12'],
+  ]},
+  schulternarme: { name: 'Gym: Schultern & Arme', minutes: 45, rounds: '3 Sätze, 60–90 Sek. Pause – für 5-6× Training pro Woche', ex: [
+    ['Schulterdrücken', '3×8–10'],
+    ['Seitheben', '4×12–15'],
+    ['Face Pulls', '3×15'],
+    ['Bizeps-Curls', '3×10'],
+    ['Trizeps über Kopf', '3×12'],
+    ['Hammer-Curls', '2×12'],
+  ]},
   ausdauer: { name: 'Gym: Ausdauer', minutes: 45, rounds: 'Pulsbereich: locker reden können = richtig', ex: [
     ['Aufwärmen Crosstrainer', '5 Min. locker'],
     ['Intervall Laufband: 2 Min. zügig / 2 Min. locker', '6 Runden'],
@@ -227,6 +258,10 @@ const WORKOUT_CATS = {
   'gym-ganzkoerper-b': () => GYM_PLANS.ganzkoerper2,
   'gym-ausdauer': () => GYM_PLANS.ausdauer,
   'gym-bauch': () => GYM_PLANS.bauch,
+  'gym-beinepo': () => GYM_PLANS.beinepo,
+  'gym-brust': () => GYM_PLANS.brust,
+  'gym-ruecken': () => GYM_PLANS.ruecken,
+  'gym-schulternarme': () => GYM_PLANS.schulternarme,
   'gym-sprungkraft': () => GYM_PLANS.sprungkraft,
   'cardio-joggen': () => CARDIO_PLANS.joggen,
   'cardio-joggen-intervall': () => CARDIO_PLANS['joggen-intervall'],
@@ -241,12 +276,38 @@ const WORKOUT_CATS = {
   'paar-spass30': () => PAAR_WORKOUTS[3],
 };
 function workoutByCat(cat, person) {
+  // Selbst erstellte Workouts (KI oder von Hand): cat 'mein-<id>'
+  if (cat && cat.startsWith('mein-')) {
+    for (const p of ['stefan', 'linda']) {
+      const own = ((DATA.training && DATA.training.myWorkouts && DATA.training.myWorkouts[p]) || []).find(w => 'mein-' + w.id === cat);
+      if (own) return { ...own, custom: true };
+    }
+    return null;
+  }
   const f = WORKOUT_CATS[cat];
   if (!f) return null;
   const base = f();
   // Selbst angepasste Übungslisten haben Vorrang
   const cust = person && DATA.training && DATA.training.custom && DATA.training.custom[person] && DATA.training.custom[person][cat];
   return cust ? { ...base, ex: cust.ex, custom: true } : base;
+}
+/* Passt Training zusammen? 'gym' = zusammen hinfahren, 'cardio' = gleiche Sportart, 'paar' = sowieso zu zweit */
+function trainingTogetherKind(catA, catB) {
+  if (!catA || !catB) return null;
+  if (workoutFamily(catA) === 'paar' || workoutFamily(catB) === 'paar') return 'paar';
+  if (catA.startsWith('gym') && catB.startsWith('gym')) return 'gym';
+  if (catA.startsWith('cardio') && catB.startsWith('cardio')) {
+    // gleiche Sportart, auch wenn einer Intervalle macht: rad/radfahren, joggen, schwimmen
+    const a = catA.split('-')[1], b = catB.split('-')[1];
+    if (a.startsWith(b) || b.startsWith(a)) return 'cardio';
+  }
+  return null;
+}
+/* Ergänzt „mit Linda/Stefan zusammen“, wenn der Partner am selben Tag Kompatibles trainiert */
+function trainingTogetherOn(person, monISO, day, cat) {
+  const other = person === 'stefan' ? 'linda' : 'stefan';
+  const theirs = (trainingState().week[monISO + ':' + other] || []).find(e => e.day === day);
+  return theirs ? trainingTogetherKind(cat, theirs.cat) : null;
 }
 /* Grobe Familie einer Kategorie – fürs Matchen gemeinsamer Einheiten */
 function workoutFamily(cat) {
@@ -410,6 +471,7 @@ function trainingState() {
   if (!DATA.training.week) DATA.training.week = {};
   if (!DATA.training.weekPrefs) DATA.training.weekPrefs = {};
   if (!DATA.training.custom) DATA.training.custom = {};
+  if (!DATA.training.myWorkouts) DATA.training.myWorkouts = {};
   return DATA.training;
 }
 /* Wochen-Check-in: Wie oft und wo diese Woche? (überschreibt den Plan nur für diese Woche) */

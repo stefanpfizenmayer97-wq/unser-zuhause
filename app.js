@@ -1054,11 +1054,13 @@ function renderTrainingWeek(mon) {
     const iso = toISO(addDays(new Date(mon + 'T12:00'), e.day));
     const isToday = iso === t;
     const past = iso < t && !e.done;
+    const zus = trainingTogetherOn(me(), mon, e.day, e.cat);
+    const zusText = zus === 'gym' ? 'mit ' + nameOf(partner()) + ' zusammen im Gym' : zus === 'cardio' ? 'zusammen mit ' + nameOf(partner()) : zus === 'paar' ? 'zu zweit mit ' + nameOf(partner()) : '';
     html += `<div class="row ${e.done ? 'done' : ''}" style="${isToday ? 'border-left:3px solid var(--olive);' : ''}">
       <button class="check ${e.done ? 'on' : ''}" data-action="training-done" data-mon="${mon}" data-day="${e.day}">${icon('check', 15)}</button>
       <div class="grow" data-action="training-open" data-cat="${e.cat}" data-mon="${mon}" data-day="${e.day}">
-        <div class="title">${esc(e.title)}</div>
-        <div class="meta">${WD[e.day]} ${isToday ? '· heute' : ''}${e.time ? ' · ' + esc(e.time) + ' Uhr' : ''} · ~${e.minutes} Min.${e.moved ? ' · wegen Termin verschoben' : ''}${past ? ' · verpasst – einfach nachholen' : ''}</div>
+        <div class="title">${esc(e.title)}${zusText ? ' <span style="color:#BC6A4A">♥</span>' : ''}</div>
+        <div class="meta">${WD[e.day]} ${isToday ? '· heute' : ''}${e.time ? ' · ' + esc(e.time) + ' Uhr' : ''} · ~${e.minutes} Min.${zusText ? ' · <b>' + zusText + '</b>' : ''}${e.moved ? ' · wegen Termin verschoben' : ''}${past ? ' · verpasst – einfach nachholen' : ''}</div>
       </div>
       <span class="more" data-action="training-move" data-mon="${mon}" data-day="${e.day}">schieben</span>
     </div>`;
@@ -1078,8 +1080,8 @@ function renderWorkoutLib() {
   const cats = [
     ['Für zuhause', [['home-ganzkoerper', 'Ganzkörper'], ['home-bauch', 'Bauch'], ['home-beine', 'Beine & Po'], ['home-arme', 'Arme & Schultern'], ['home-stretch', 'Stretching'], ['home-yoga', 'Yoga']]],
     ['Zu zweit', [['paar-zirkel20', 'Partner-Zirkel'], ['paar-sync20', 'Synchron-Workout'], ['paar-kraft30', 'Partner-Kraft'], ['paar-spass30', 'Cardio & Spaß']]],
-    ['Im Gym', [['gym-ganzkoerper', 'Ganzkörper'], ['gym-oberkoerper', 'Oberkörper'], ['gym-unterkoerper', 'Unterkörper'], ['gym-push', 'Push'], ['gym-pull', 'Pull'], ['gym-bauch', 'Bauch & Core'], ['gym-ausdauer', 'Ausdauer'], ['gym-sprungkraft', 'Sprungkraft']]],
-    ['Ausdauer draußen', [['cardio-joggen', 'Joggen'], ['cardio-radfahren', 'Radfahren'], ['cardio-schwimmen', 'Schwimmen']]],
+    ['Im Gym', [['gym-ganzkoerper', 'Ganzkörper A'], ['gym-ganzkoerper-b', 'Ganzkörper B'], ['gym-oberkoerper', 'Oberkörper'], ['gym-unterkoerper', 'Unterkörper'], ['gym-beinepo', 'Beine & Po'], ['gym-push', 'Push'], ['gym-pull', 'Pull'], ['gym-brust', 'Brust & Trizeps'], ['gym-ruecken', 'Rücken & Bizeps'], ['gym-schulternarme', 'Schultern & Arme'], ['gym-bauch', 'Bauch & Core'], ['gym-ausdauer', 'Ausdauer'], ['gym-sprungkraft', 'Sprungkraft']]],
+    ['Ausdauer draußen', [['cardio-joggen', 'Zone-2-Lauf'], ['cardio-joggen-intervall', 'Intervall-Lauf 4×4'], ['cardio-joggen-lang', 'Langer Lauf'], ['cardio-radfahren', 'Radfahren'], ['cardio-rad-intervall', 'Rad-Intervalle'], ['cardio-schwimmen', 'Schwimmen'], ['cardio-schwimmen-intervall', 'Schwimm-Intervalle']]],
   ];
   let html = '';
   for (const [label, list] of cats) {
@@ -1089,6 +1091,16 @@ function renderWorkoutLib() {
     }
     html += '</div>';
   }
+  const own = (trainingState().myWorkouts && trainingState().myWorkouts[me()]) || [];
+  html += `<h2 class="sect">Eigene Workouts</h2>`;
+  if (own.length) {
+    html += `<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">`;
+    for (const w of own) {
+      html += `<div class="card" data-action="training-open" data-cat="mein-${w.id}" style="padding:14px"><div class="lbl" style="font-weight:700;color:var(--ink)">${esc(w.name)}</div><div class="hint">${w.minutes} Min. · von dir</div></div>`;
+    }
+    html += '</div>';
+  }
+  html += `<button class="btn ghost small full" data-action="ai-workout-open">${icon('spark', 15)} Neues Workout mit KI erstellen</button>`;
   return html;
 }
 
@@ -1367,7 +1379,7 @@ function openWorkoutEditSheet(cat) {
     <textarea class="f" id="weEx" rows="10">${esc(w.ex.map(([n, v]) => n + ' – ' + v).join('\n'))}</textarea>
     <div style="margin-top:12px;display:flex;flex-direction:column;gap:8px">
       <button class="btn full" data-action="workout-edit-save" data-cat="${cat}">Speichern</button>
-      ${w.custom ? '<button class="btn danger small full" data-action="workout-edit-reset" data-cat="' + cat + '">Zurück zum Standard</button>' : ''}
+      ${cat.startsWith('mein-') ? '<button class="btn danger small full" data-action="workout-edit-reset" data-cat="' + cat + '">Workout löschen</button>' : w.custom ? '<button class="btn danger small full" data-action="workout-edit-reset" data-cat="' + cat + '">Zurück zum Standard</button>' : ''}
     </div>
   `);
 }
@@ -1784,15 +1796,51 @@ function handleAction(a, el) {
       });
       if (!ex.length) { toast('Mindestens eine Übung angeben'); break; }
       const ts = trainingState();
-      if (!ts.custom[me()]) ts.custom[me()] = {};
-      ts.custom[me()][el.dataset.cat] = { ex };
+      if (el.dataset.cat.startsWith('mein-')) {
+        const own = (ts.myWorkouts[me()] || []).find(w => 'mein-' + w.id === el.dataset.cat);
+        if (own) own.ex = ex;
+      } else {
+        if (!ts.custom[me()]) ts.custom[me()] = {};
+        ts.custom[me()][el.dataset.cat] = { ex };
+      }
       save(); closeSheet(); openWorkoutSheet(el.dataset.cat); toast('Gespeichert – dein Workout');
       break;
     }
     case 'workout-edit-reset': {
       const ts = trainingState();
-      if (ts.custom[me()]) delete ts.custom[me()][el.dataset.cat];
-      save(); closeSheet(); openWorkoutSheet(el.dataset.cat); toast('Standard wiederhergestellt');
+      if (el.dataset.cat.startsWith('mein-')) {
+        ts.myWorkouts[me()] = (ts.myWorkouts[me()] || []).filter(w => 'mein-' + w.id !== el.dataset.cat);
+        save(); closeSheet(); state.training = 'workouts'; render(); toast('Workout gelöscht');
+      } else {
+        if (ts.custom[me()]) delete ts.custom[me()][el.dataset.cat];
+        save(); closeSheet(); openWorkoutSheet(el.dataset.cat); toast('Standard wiederhergestellt');
+      }
+      break;
+    }
+    case 'ai-workout-open':
+      openSheet(`<h2>Workout mit KI erstellen</h2>
+        <label class="f">Was soll es sein?</label>
+        <textarea class="f" id="awWish" rows="3" placeholder="z. B. 30 Min. Beine & Po mit Kurzhanteln zuhause, ohne Sprünge"></textarea>
+        <button class="btn full" style="margin-top:12px" data-action="ai-workout-create">${icon('spark', 16)} Erstellen</button>`);
+      break;
+    case 'ai-workout-create': {
+      const wish = document.getElementById('awWish').value.trim();
+      if (!wish) { toast('Beschreib kurz, was du willst'); break; }
+      openSheet('<h2>Einen Moment …</h2><div class="voicebox"><div class="live">Ich stelle dein Workout zusammen.</div></div>');
+      (async () => {
+        try {
+          const r = await UZSync.invoke('ai', { mode: 'workoutgen', wish });
+          const ts = trainingState();
+          if (!ts.myWorkouts[me()]) ts.myWorkouts[me()] = [];
+          const w = { id: uid(), name: r.name, minutes: r.minutes, rounds: r.rounds, ex: (r.ex || []).map(x => [x.name, x.umfang]) };
+          ts.myWorkouts[me()].push(w);
+          save(); render(); openWorkoutSheet('mein-' + w.id); toast('Dein Workout ist da!');
+          pingPartner('Neues Workout von ' + nameOf(me()), w.name);
+        } catch (e) {
+          console.warn('KI-Workout fehlgeschlagen:', e.message);
+          closeSheet(); toast('KI gerade nicht erreichbar – später nochmal versuchen');
+        }
+      })();
       break;
     }
     case 'training-move-to': {

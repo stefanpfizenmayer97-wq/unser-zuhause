@@ -181,7 +181,9 @@ function eventsOn(iso) {
     const dayIdx = Math.round((new Date(iso + 'T12:00') - new Date(mon + 'T12:00')) / 864e5);
     for (const person of ['stefan', 'linda']) {
       for (const e of DATA.training.week[mon + ':' + person] || []) {
-        if (e.day === dayIdx) training.push({ id: 'tr-' + person + '-' + iso, title: e.title, date: iso, time: e.time || '', who: person, src: 'training', trDone: e.done });
+        if (e.day !== dayIdx) continue;
+        const zus = typeof trainingTogetherOn === 'function' ? trainingTogetherOn(person, mon, dayIdx, e.cat) : null;
+        training.push({ id: 'tr-' + person + '-' + iso, title: e.title + (zus ? ' · zusammen' : ''), date: iso, time: e.time || '', who: person, src: 'training', trDone: e.done });
       }
     }
   }

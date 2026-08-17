@@ -123,4 +123,10 @@ const UEBUNGEN = {
   'Hauptteil: 6–8× 50 m zügig': 'Sechs bis acht Mal 50 Meter zügig schwimmen, mit kurzer Pause am Beckenrand nach jeder Bahn; das Tempo so wählen, dass die Technik sauber bleibt.',
   'Beine mit Brett': 'Das Schwimmbrett mit gestreckten Armen vor sich halten und sich nur mit Beinschlag vorwärts bewegen. Der Beinschlag kommt aus der Hüfte mit relativ gestreckten, lockeren Beinen. Häufigster Fehler: zu stark aus den Knien strampeln.',
   'Ausschwimmen locker': 'Ein paar Bahnen ganz locker ausschwimmen, um den Körper herunterzufahren.',
+  'Hip Thrust (Langhantel)': 'Oberer Rücken auf einer Bank, Langhantel (mit Polster) auf der Hüfte, Füße hüftbreit aufgestellt. Hüfte kraftvoll nach oben strecken, bis der Körper von Knie bis Schulter eine Linie bildet, oben den Po fest anspannen. Langsam absenken, nicht ins Hohlkreuz überstrecken.',
+  'Bulgarian Split Squats': 'Ein Fuß hinten erhöht auf einer Bank, das vordere Bein steht weit genug vorn. Kontrolliert absenken, bis der hintere Fuß fast den Boden berührt, das vordere Knie bleibt über dem Fuß. Über die vordere Ferse wieder hochdrücken – Oberkörper leicht vorgeneigt, Po arbeitet mit.',
+  'Beinpresse (Füße hoch angesetzt)': 'Füße bewusst weit oben auf der Platte platzieren – so arbeiten Po und Beinrückseite stärker mit. Tief absenken, ohne dass der untere Rücken vom Polster abhebt, dann über die Fersen drücken. Knie nie ganz durchstrecken.',
+  'Abduktion an der Maschine': 'Aufrecht in der Maschine sitzen, Beine gegen die Polster nach außen drücken. Am Endpunkt kurz halten und den seitlichen Po bewusst anspannen. Langsam zurück, ohne dass die Gewichte aufschlagen.',
+  'Fliegende am Kabel': 'Zwischen den Kabelzügen stehen, Arme leicht gebeugt seitlich geöffnet. Die Hände in weitem Bogen vor der Brust zusammenführen, die Brust bewusst zusammendrücken. Langsam öffnen, Schultern bleiben unten – nicht mit Schwung arbeiten.',
+  'Rudern am Kabel (enger Griff)': 'Aufrecht sitzen, enger Griff, Arme gestreckt. Den Griff zum Bauch ziehen, Ellbogen dicht am Körper, Schulterblätter am Ende zusammenziehen. Langsam nach vorn nachlassen, ohne den Rücken einzurollen.',
 };
