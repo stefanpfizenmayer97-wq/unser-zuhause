@@ -117,30 +117,18 @@ function startVoice() {
 
   let finalText = '';
   recogStop = false;
-  recog = new SR();
-  recog.lang = 'de-DE';
-  recog.interimResults = true;
-  recog.continuous = true;
+  let finished = false;
+  let restarts = 0;
 
   openSheet(`
     <h2>Ich höre zu …</h2>
     <div class="voicebox">
-      <div class="live" id="voiceLive">Sprich in Ruhe – ich höre zu, bis du auf „Fertig“ tippst.<br>Z.&nbsp;B.: „Schreib ${esc(nameOf(partner()))}, dass ich später komme“ oder „Milch auf die Liste“</div>
+      <div class="live" id="voiceLive">Sprich in Ruhe – ich höre zu, bis du auf „Fertig“ tippst. Pausen sind völlig okay.<br>Z.&nbsp;B.: „Schreib ${esc(nameOf(partner()))}, dass ich später komme“ oder „Milch auf die Liste“</div>
       <button class="btn full" data-action="voice-stop">Fertig</button>
     </div>
   `);
   document.getElementById('micBtn').classList.add('listening');
 
-  recog.onresult = ev => {
-    let interim = '';
-    for (let i = ev.resultIndex; i < ev.results.length; i++) {
-      if (ev.results[i].isFinal) finalText += ev.results[i][0].transcript + ' ';
-      else interim += ev.results[i][0].transcript;
-    }
-    const el = document.getElementById('voiceLive');
-    if (el) el.textContent = (finalText + interim).trim() || '…';
-  };
-  let finished = false;
   const finish = () => {
     if (finished) return;
     finished = true;
@@ -151,25 +139,41 @@ function startVoice() {
   };
   window._voiceFinish = finish; // Sicherheitsnetz: „Fertig“ beendet auch, wenn die Erkennung gerade pausiert
 
-  recog.onerror = ev => {
+  /* iOS/Safari beendet die Erkennung nach jeder Sprechpause von selbst und mag
+     kein erneutes start() auf derselben Instanz. Deshalb: nach jedem Ende eine
+     KOMPLETT NEUE Erkennung starten – beliebig oft, bis „Fertig“ getippt wird. */
+  const spin = () => {
     if (recogStop || finished) return;
-    // Stille o. Ä. ignorieren – onend startet die Aufnahme neu, bis „Fertig“ gedrückt wird
-    if (ev.error === 'not-allowed' || ev.error === 'service-not-allowed' || ev.error === 'audio-capture') {
-      recogStop = true; finished = true; window._voiceFinish = null;
-      stopVoiceUI(); openVoiceTextFallback();
-    }
+    if (restarts++ > 500) { finish(); return; } // Notbremse (> 30 Min. Stille)
+    const r = new SR();
+    recog = r;
+    r.lang = 'de-DE';
+    r.interimResults = true;
+    r.continuous = true;
+    r.onresult = ev => {
+      let interim = '';
+      for (let i = ev.resultIndex; i < ev.results.length; i++) {
+        if (ev.results[i].isFinal) finalText += ev.results[i][0].transcript + ' ';
+        else interim += ev.results[i][0].transcript;
+      }
+      const el = document.getElementById('voiceLive');
+      if (el) el.textContent = (finalText + interim).trim() || '…';
+    };
+    r.onerror = ev => {
+      if (recogStop || finished) return;
+      // Nur echte Verbote beenden das Zuhören – Stille, Netzwerk & Co. überstehen wir per Neustart
+      if (ev.error === 'not-allowed' || ev.error === 'service-not-allowed') {
+        recogStop = true; finished = true; window._voiceFinish = null;
+        stopVoiceUI(); openVoiceTextFallback();
+      }
+    };
+    r.onend = () => {
+      if (recogStop) { finish(); return; }
+      setTimeout(spin, 150); // frische Instanz, weiterhören
+    };
+    try { r.start(); } catch (e) { setTimeout(spin, 300); }
   };
-  recog.onend = () => {
-    if (recogStop) { finish(); return; }
-    // iOS/Safari beendet die Erkennung nach kurzen Pausen von selbst – neu starten, bis „Fertig“ gedrückt wird
-    try { recog.start(); } catch (e) {
-      setTimeout(() => {
-        if (recogStop || finished) return;
-        try { recog.start(); } catch (e2) { finish(); }
-      }, 180);
-    }
-  };
-  recog.start();
+  spin();
 }
 
 /* Erst die KI fragen (versteht freie Sprache), sonst der eingebaute Regel-Parser */
