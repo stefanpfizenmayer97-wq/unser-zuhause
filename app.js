@@ -1207,7 +1207,10 @@ function openWorkoutSheet(cat, mon, day) {
     ${note ? '<div class="card sand" style="margin-bottom:10px;font-size:13px">' + esc(note) + '</div>' : ''}
     ${(plan && plan.limits ? plan.limits : []).filter(l => LIMIT_HINTS[l] && LIMIT_HINTS[l].match(cat)).map(l => '<div class="card" style="margin-bottom:10px;font-size:13px;border-left:4px solid #A54B32">' + esc(LIMIT_HINTS[l].text) + '</div>').join('')}
     ${cat.startsWith('gym') && cat !== 'gym-ausdauer' ? '<div class="hint" style="margin-bottom:10px">Aufwärmen: 5 Min. locker (Rad/Rudern) + 1–2 leichte Aufwärmsätze der ersten Übung.</div>' : ''}
-    ${w.ex.map(([n, v]) => '<div class="row" data-action="exercise-open" data-name="' + esc(n) + '" data-cat="' + cat + '"' + (mon !== undefined ? ' data-mon="' + mon + '" data-day="' + day + '"' : '') + '><span class="ric">' + icon('hantel', 16) + '</span><div class="grow"><div class="title">' + esc(n) + '</div></div><span class="meta">' + esc(v) + '</span></div>').join('')}
+    ${w.ex.map(([n, v]) => {
+      const prog = cat.startsWith('gym') ? nextProgression(me(), n, v) : null;
+      return '<div class="row" data-action="exercise-open" data-name="' + esc(n) + '" data-cat="' + cat + '"' + (mon !== undefined ? ' data-mon="' + mon + '" data-day="' + day + '"' : '') + '><span class="ric">' + icon('hantel', 16) + '</span><div class="grow"><div class="title">' + esc(n) + '</div>' + (prog ? '<div class="meta" style="color:var(--olive-deep);font-weight:700">heute: ' + prog.w + ' kg × ' + prog.r + '</div>' : '') + '</div><span class="meta">' + esc(v) + '</span></div>';
+    }).join('')}
     <p class="hint" style="margin-top:6px">Übung antippen: Erklärung${cat.startsWith('gym') ? ' + Gewichts-Tagebuch' : ''}.</p>
     <div style="margin-top:14px;display:flex;flex-direction:column;gap:8px">
       ${mon !== undefined && day !== undefined ? '<button class="btn full" data-action="training-done-sheet" data-mon="' + mon + '" data-day="' + day + '">' + icon('check', 16) + ' Geschafft – abhaken</button>' : ''}
@@ -1231,6 +1234,9 @@ function openExerciseSheet(name, cat, mon, day) {
   if (!ts.log) ts.log = {};
   if (!ts.log[me()]) ts.log[me()] = {};
   const hist = (ts.log[me()][name] || []).slice(-3).reverse();
+  const wk = cat ? workoutByCat(cat, me()) : null;
+  const vol = wk ? ((wk.ex.find(x => x[0] === name) || [])[1] || '') : '';
+  const prog = isGym ? nextProgression(me(), name, vol) : null;
   const back = `data-action="training-open" data-cat="${cat}"` + (mon !== undefined && mon !== '' ? ` data-mon="${mon}" data-day="${day}"` : '');
   openSheet(`
     <h2>${esc(name)}</h2>
@@ -1238,10 +1244,11 @@ function openExerciseSheet(name, cat, mon, day) {
     <a class="btn ghost small full" style="margin-top:10px;text-align:center;text-decoration:none;display:block" href="https://www.youtube.com/results?search_query=${encodeURIComponent(name.replace(/\(.*\)/, '').trim() + ' Übung Ausführung')}" target="_blank" rel="noopener">▶ Video zur Ausführung ansehen</a>
     ${isGym ? `
       <div class="cathead" style="margin-top:14px">Dein Tagebuch</div>
-      ${hist.length ? hist.map(h => '<div class="row"><div class="grow"><div class="title">' + h.w + ' kg × ' + h.r + '</div><div class="meta">' + esc(fmtShort(h.d)) + '</div></div></div>').join('') : '<p class="mut">Noch kein Eintrag – trag nach dem ersten Satz dein Gewicht ein, dann siehst du hier deine Steigerung.</p>'}
+      ${prog ? '<div class="card sand" style="font-size:14px"><b>Heute dran: ' + prog.w + ' kg × ' + prog.r + '</b><div class="hint" style="margin-top:3px">' + esc(prog.grund) + '</div></div>' : ''}
+      ${hist.length ? hist.map(h => '<div class="row"><div class="grow"><div class="title">' + h.w + ' kg × ' + h.r + '</div><div class="meta">' + esc(fmtShort(h.d)) + '</div></div></div>').join('') : '<p class="mut">Noch kein Eintrag – trag nach dem ersten Satz dein Gewicht ein, dann rechnet die App ab dem nächsten Mal deine Steigerung aus.</p>'}
       <div class="frow" style="margin-top:8px">
-        <div><label class="f">Gewicht (kg)</label><input class="f" id="exLogW" type="number" inputmode="decimal" step="0.5" value="${hist[0] ? hist[0].w : ''}"></div>
-        <div><label class="f">Wiederholungen</label><input class="f" id="exLogR" type="number" inputmode="numeric" value="${hist[0] ? hist[0].r : ''}"></div>
+        <div><label class="f">Gewicht (kg)</label><input class="f" id="exLogW" type="number" inputmode="decimal" step="0.5" value="${prog ? prog.w : hist[0] ? hist[0].w : ''}"></div>
+        <div><label class="f">Wiederholungen</label><input class="f" id="exLogR" type="number" inputmode="numeric" value="${prog ? prog.r : hist[0] ? hist[0].r : ''}"></div>
       </div>
       <button class="btn full" style="margin-top:10px" data-action="exercise-log" data-name="${esc(name)}" data-cat="${cat}" data-mon="${mon !== undefined ? mon : ''}" data-day="${day !== undefined ? day : ''}">Eintragen</button>
     ` : ''}

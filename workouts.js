@@ -637,6 +637,23 @@ function reflowTrainingWeek(person, monISO) {
   if (changed) { entries.sort((a, b) => a.day - b.day); save(); }
   return changed;
 }
+/* Automatische Progression aus dem Tagebuch (doppelte Progression):
+   Erst Wiederholungen innerhalb des Zielbereichs steigern, an der Obergrenze
+   dann +2,5 kg und zurück an den unteren Rand des Bereichs. */
+function nextProgression(person, exName, vol) {
+  const arr = DATA.training && DATA.training.log && DATA.training.log[person] && DATA.training.log[person][exName];
+  if (!arr || !arr.length) return null;
+  const last = arr[arr.length - 1];
+  if (!last.w || !last.r) return null;
+  const m = (vol || '').match(/×\s*(\d+)(?:\s*[–\-]\s*(\d+))?/);
+  const lo = m ? parseInt(m[1], 10) : 8;
+  const hi = m && m[2] ? parseInt(m[2], 10) : lo + 2;
+  if (last.r >= hi) {
+    return { w: Math.round((last.w + 2.5) * 2) / 2, r: lo, grund: 'Obergrenze geschafft → mehr Gewicht, zurück auf ' + lo + ' Wdh.' };
+  }
+  return { w: last.w, r: Math.min(last.r + 1, hi), grund: 'gleiches Gewicht, eine Wiederholung mehr' };
+}
+
 /* Sprachsuche: „Bauch“, „Yoga“, „Gym Push“ → passende Workout-Kategorie */
 function workoutCatForQuery(q) {
   q = (q || '').toLowerCase();
