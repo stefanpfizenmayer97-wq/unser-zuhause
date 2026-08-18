@@ -230,6 +230,9 @@ h2.sect .more { font-family: var(--sans); font-size: 13px; font-weight: 600; col
 #tabbar button .ico { display: flex; opacity: 0.5; }
 #tabbar button.active { color: var(--olive-deep); }
 #tabbar button.active .ico { opacity: 1; color: var(--olive); }
+/* Tastatur offen: Leiste + Mikro ausblenden – iOS lässt fixierte Elemente sonst
+   über der Tastatur schweben und beim Scrollen mitten im Bild hängen */
+body.kbopen #tabbar, body.kbopen #micBtn { display: none; }
 
 /* ---------- Mikrofon ---------- */
 #micBtn {

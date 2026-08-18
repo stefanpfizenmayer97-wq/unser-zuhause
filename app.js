@@ -2548,6 +2548,23 @@ document.addEventListener('change', e => {
 document.getElementById('sheetBackdrop').addEventListener('click', () => { stopVoiceRecognition(); closeSheet(); });
 document.getElementById('micBtn').addEventListener('click', startVoice);
 
+/* Bildschirm-Tastatur erkennen (iOS): solange sie offen ist, Leiste + Mikro verstecken */
+if (window.visualViewport) {
+  const vv = window.visualViewport;
+  const onVV = () => {
+    const kbOffen = window.innerHeight - vv.height > 100;
+    document.body.classList.toggle('kbopen', kbOffen);
+  };
+  vv.addEventListener('resize', onVV);
+  vv.addEventListener('scroll', onVV);
+} else {
+  // Fallback für ältere Browser: bei Fokus auf Eingabefelder ausblenden
+  document.addEventListener('focusin', e => {
+    if (e.target.matches('input[type="text"], input:not([type]), textarea, input[type="search"]')) document.body.classList.add('kbopen');
+  });
+  document.addEventListener('focusout', () => setTimeout(() => document.body.classList.remove('kbopen'), 150));
+}
+
 /* ---------- Ziehen & Zuschieben: Karten zwischen den Spalten ---------- */
 let _drag = null;
 
