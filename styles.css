@@ -233,6 +233,8 @@ h2.sect .more { font-family: var(--sans); font-size: 13px; font-weight: 600; col
 /* Tastatur offen: Leiste + Mikro ausblenden – iOS lässt fixierte Elemente sonst
    über der Tastatur schweben und beim Scrollen mitten im Bild hängen */
 body.kbopen #tabbar, body.kbopen #micBtn { display: none; }
+/* Ohne Leiste rückt das Nachrichtenfeld direkt an die Tastatur */
+body.kbopen .chatbar { bottom: 8px; }
 
 /* ---------- Mikrofon ---------- */
 #micBtn {
