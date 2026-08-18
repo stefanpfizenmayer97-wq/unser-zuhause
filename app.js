@@ -2548,6 +2548,26 @@ document.addEventListener('change', e => {
 document.getElementById('sheetBackdrop').addEventListener('click', () => { stopVoiceRecognition(); closeSheet(); });
 document.getElementById('micBtn').addEventListener('click', startVoice);
 
+/* iOS-PWA-Bug: Nach dem Fortsetzen aus dem Hintergrund verankert Safari fixierte
+   Elemente falsch – die Leiste „wandert“ dann beim Scrollen mit nach oben.
+   Abhilfe: bei jedem Aufwachen ein Neuzeichnen der Leisten erzwingen. */
+function repaintBars() {
+  document.body.classList.remove('kbopen');
+  for (const id of ['tabbar', 'micBtn']) {
+    const el = document.getElementById(id);
+    if (!el) continue;
+    el.style.display = 'none';
+    void el.offsetHeight;            // Reflow erzwingen
+    el.style.display = '';
+  }
+  // Viewport neu verankern (gleiche Position, zwingt iOS zum Neuberechnen)
+  window.scrollTo(window.scrollX, window.scrollY + 1);
+  window.scrollTo(window.scrollX, window.scrollY - 1);
+}
+window.addEventListener('pageshow', repaintBars);
+window.addEventListener('focus', () => setTimeout(repaintBars, 60));
+document.addEventListener('visibilitychange', () => { if (!document.hidden) setTimeout(repaintBars, 60); });
+
 /* Bildschirm-Tastatur erkennen (iOS): solange sie offen ist, Leiste + Mikro verstecken */
 if (window.visualViewport) {
   const vv = window.visualViewport;
