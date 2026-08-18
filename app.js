@@ -196,61 +196,33 @@ function renderHome() {
     html += `<button class="btn ghost small" data-action="edit-note">${icon('pen', 15)} Zettel für ${esc(nameOf(partner()))} anpinnen</button>`;
   }
 
-  html += `<h2 class="sect">Auf einen Blick</h2>
-  <div class="stat">
-    <div class="card" data-action="go-haushalt"><div class="num">${dueMine.length}</div><div class="lbl">Aufgaben für dich</div></div>
-    <div class="card" data-action="go-einkauf"><div class="num">${shopOpen}</div><div class="lbl">auf der Einkaufsliste</div></div>
-    <div class="card" data-action="go-kalender"><div class="num">${next ? Math.max(0, daysUntil(next.date)) : '–'}</div><div class="lbl">${next ? 'Tage bis „' + esc(next.title.slice(0, 14)) + '“' : 'keine Termine'}</div></div>
-  </div>`;
-
-  html += `<h2 class="sect">Heute</h2>`;
-  let anyToday = false;
-  for (const e of evToday) {
-    anyToday = true;
-    html += `<div class="row"><span class="ric">${icon(e.src === 'ics' ? 'case' : 'cal', 18)}</span><div class="grow"><div class="title">${esc(e.title)}</div><div class="meta">${e.time ? esc(e.time) + ' Uhr · ' : ''}${e.src === 'ics' ? 'Outlook · ' : ''}${e.who === 'beide' ? 'Wir beide' : esc(nameOf(e.who))}</div></div></div>`;
-  }
-  if (mealM) {
-    anyToday = true;
-    html += `<div class="row" data-action="go-kueche"><span class="ric">${icon('pot', 18)}</span><div class="grow"><div class="title">${esc(mealName(mealM))}</div><div class="meta">Heute Mittag auf dem Kochplan</div></div></div>`;
-  }
-  if (mealA) {
-    anyToday = true;
-    html += `<div class="row" data-action="go-kueche"><span class="ric">${icon('pot', 18)}</span><div class="grow"><div class="title">${esc(mealName(mealA))}</div><div class="meta">Heute Abend auf dem Kochplan</div></div></div>`;
-  }
-  if (DATA.training && DATA.training.plans && DATA.training.plans[me()]) {
-    const trMon = toISO(startOfWeek(new Date()));
-    const trE = (trainingWeekEntries(me(), trMon) || scheduleTrainingWeek(me(), trMon) || [])
-      .find(e => !e.done && toISO(addDays(new Date(trMon + 'T12:00'), e.day)) === todayISO());
-    if (trE) {
-      anyToday = true;
-      html += `<div class="row" data-action="go-training"><span class="ric">${icon('hantel', 18)}</span><div class="grow"><div class="title">${esc(trE.title)}</div><div class="meta">Heute auf deinem Trainingsplan · ~${trE.minutes} Min.</div></div></div>`;
-    }
-  }
-  for (const t of dueMine.slice(0, 3)) {
-    anyToday = true;
-    html += taskRow(t);
-  }
-  if (!anyToday) html += emptyState('star', 'Für dich steht heute nichts an – genieß den Tag!');
-
-  html += `<h2 class="sect">Demnächst <span class="more" data-action="go-kalender">zum Kalender</span></h2>`;
-  const upcoming = [];
-  for (let i = 1; i <= 30 && upcoming.length < 5; i++) {
-    const iso = toISO(addDays(new Date(), i));
-    for (const e of eventsOn(iso).filter(x => mine(x) && x.src !== 'training')) {
-      if (upcoming.length < 5) upcoming.push(e);
-    }
-  }
-  if (upcoming.length) {
-    for (const e of upcoming) {
-      html += `<div class="row" style="border-left:4px solid ${WHO_COLOR(e.who)}" data-action="home-ev" data-iso="${e.date}">
-        <span class="ric">${icon(e.src === 'ics' ? 'case' : 'cal', 18)}</span>
-        <div class="grow"><div class="title">${esc(e.title)}</div>
-        <div class="meta">${esc(fmtShort(e.date))}${e.time ? ' · ' + esc(e.time) + ' Uhr' : ''}${e.src === 'ics' ? ' · Outlook' : ''}${e.repeat ? ' · ↻' : ''}</div></div>
-        ${whoChip(e.who)}
-      </div>`;
+  // Heutige Termine
+  html += `<h2 class="sect">Heute <span class="more" data-action="go-kalender">zum Kalender</span></h2>`;
+  if (evToday.length) {
+    for (const e of evToday) {
+      html += `<div class="row" style="border-left:4px solid ${WHO_COLOR(e.who)}"><span class="ric">${icon(e.src === 'ics' ? 'case' : 'cal', 18)}</span><div class="grow"><div class="title">${esc(e.title)}</div><div class="meta">${e.time ? esc(e.time) + ' Uhr · ' : ''}${e.src === 'ics' ? 'Outlook · ' : ''}${e.who === 'beide' ? 'Wir beide' : esc(nameOf(e.who))}</div></div></div>`;
     }
   } else {
-    html += `<div class="card" data-action="plan-datenight"><div class="hint">Nichts geplant in den nächsten Wochen – wie wär's mit einer Date-Night? Tippen zum Planen.</div></div>`;
+    html += `<div class="card"><p class="mut" style="margin:0">Keine Termine heute.</p></div>`;
+  }
+
+  // Essen heute
+  if (mealM || mealA) {
+    html += `<h2 class="sect">Essen heute <span class="more" data-action="go-kueche">zum Kochplan</span></h2>`;
+    if (mealM) html += `<div class="row" data-action="go-kueche"><span class="ric">${icon('pot', 18)}</span><div class="grow"><div class="title">${esc(mealName(mealM))}</div><div class="meta">Mittagessen</div></div></div>`;
+    if (mealA) html += `<div class="row" data-action="go-kueche"><span class="ric">${icon('pot', 18)}</span><div class="grow"><div class="title">${esc(mealName(mealA))}</div><div class="meta">Abendessen</div></div></div>`;
+  }
+
+  // To-dos & Aufgaben nur, wenn sie HEUTE anstehen
+  const todayIdx = (now.getDay() + 6) % 7;
+  const tasksToday = dueMine.filter(t => t.freq === 'daily' || t.day === todayIdx);
+  const todosToday = (DATA.todos || []).filter(t => !t.done && t.due === today && ((t.who || 'beide') === me() || (t.who || 'beide') === 'beide'));
+  if (tasksToday.length || todosToday.length) {
+    html += `<h2 class="sect">Heute dran <span class="more" data-action="go-haushalt">zum Haushalt</span></h2>`;
+    for (const t of tasksToday) html += taskRow(t);
+    for (const t of todosToday) {
+      html += `<div class="row"><button class="check" data-action="todo-toggle" data-id="${t.id}">${icon('check', 15)}</button><div class="grow"><div class="title">${esc(t.title)}</div><div class="meta">To-do · heute fällig</div></div></div>`;
+    }
   }
 
   // Deine Trainingswoche in Kurzform
