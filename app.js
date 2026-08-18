@@ -1588,8 +1588,7 @@ function handleAction(a, el) {
         const title = inp.value.trim();
         DATA.todos.push({ id: uid(), title, who, due: '', done: false });
         save(); render();
-        if (who === 'beide') pingPartner('Neues gemeinsames To-do', title);
-        else if (who === partner()) pingPartner('Neues To-do für dich', title);
+        if (who === 'beide' || who === partner()) pingBatched('todo', 'Neue To-dos für dich', title, 300000);
         toast(who === 'beide' ? 'Bei den gemeinsamen To-dos' : 'In ' + nameOf(who) + 's Spalte gelegt');
       }
       break;
@@ -1602,7 +1601,7 @@ function handleAction(a, el) {
         const vorher = t.who || 'beide';
         t.who = el.dataset.w;
         save(); openTodoSheet(id);
-        if (t.who === partner() && vorher !== partner()) pingPartner('Ein To-do für dich', t.title);
+        if (t.who === partner() && vorher !== partner()) pingBatched('todo', 'Neue To-dos für dich', t.title, 300000);
       }
       break;
     }
@@ -2452,8 +2451,7 @@ function handleAction(a, el) {
         const who = document.getElementById('vtWho').value;
         DATA.todos.push({ id: uid(), title, who, due: document.getElementById('vtDue').value, done: false });
         save(); closeSheet(); state.tab = 'haushalt'; render(); toast('To-do angelegt');
-        if (who === partner()) pingPartner('Neues To-do für dich', title);
-        else if (who === 'beide') pingPartner('Neues gemeinsames To-do', title);
+        if (who === partner() || who === 'beide') pingBatched('todo', 'Neue To-dos für dich', title, 300000);
       }
       break;
     }
@@ -2601,7 +2599,7 @@ function dragDrop(col) {
       t.who = col;
       save(); render();
       toast(col === 'beide' ? 'Wieder gemeinsam' : nameOf(col) + ' übernimmt');
-      if (col === partner()) pingPartner('Ein To-do für dich', t.title);
+      if (col === partner()) pingBatched('todo', 'Neue To-dos für dich', t.title, 300000);
     }
   } else if (_drag.kind === 'task' && col !== 'beide') {
     const t = DATA.tasks.find(x => x.id === _drag.id);
@@ -2611,7 +2609,7 @@ function dragDrop(col) {
       else { t.rotation = [col]; t.turn = 0; }
       save(); render();
       toast(nameOf(col) + ' übernimmt „' + t.title + '“');
-      if (col === partner()) pingPartner('Aufgabe zugeschoben', t.title);
+      if (col === partner()) pingBatched('todo', 'Neue To-dos für dich', t.title, 300000);
     }
   }
 }
@@ -2678,17 +2676,9 @@ document.addEventListener('contextmenu', e => {
 
 /* ---------- Erinnerungen (bei geöffneter App) ---------- */
 function maybeNotify() {
-  if (!('Notification' in window) || Notification.permission !== 'granted') return;
-  const key = todayISO();
-  if (DATA.settings.notified[key]) return;
-  const due = openTasks();
-  if (!due.length) return;
-  const mine = due.filter(t => taskWho(t) === me());
-  const body = mine.length
-    ? nameOf(me()) + ', du bist dran: ' + mine.map(t => t.title).join(', ')
-    : due.length + ' Aufgaben sind diese Woche noch offen.';
-  try { new Notification('Unser Zuhause', { body }); } catch (e) {}
-  DATA.settings.notified[key] = true; save();
+  /* Bewusst abgeschaltet: Die lokale „du bist dran“-Meldung feuerte bei jedem
+     App-Öffnen neu (der Tagesmerker wurde vom Cloud-Sync überschrieben) und
+     nervte. Aufgaben-Erinnerung kommt jetzt NUR noch 1× im Morgen-Push. */
 }
 
 /* ---------- Push-Hinweis beim App-Start ---------- */
