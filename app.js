@@ -742,6 +742,22 @@ function openMealSheet(iso, slot) {
   `);
 }
 
+/* KI-Rezept-Vorschlag anzeigen (auch nach Änderungswünschen) */
+function showAiRecipeResult(rec) {
+  state._aiRecipe = rec;
+  openSheet(`<h2>${esc(rec.name)}</h2>
+    ${rec.ing.map(i => '<div class="row"><div class="grow"><div class="title" style="font-weight:500">' + esc(i) + '</div><div class="meta">' + esc(guessCat(i)) + '</div></div></div>').join('')}
+    ${rec.anleitung ? '<h2 style="font-size:17px;margin:14px 0 8px">Zubereitung</h2><div class="card" style="white-space:pre-wrap;font-size:14.5px;line-height:1.5">' + esc(rec.anleitung) + '</div>' : ''}
+    <div style="margin-top:12px;display:flex;flex-direction:column;gap:8px">
+      <button class="btn full" data-action="ai-recipe-save">Speichern</button>
+      <button class="btn ghost small full" data-action="ai-recipe-refine">${icon('spark', 14)} Änderungswunsch – KI passt es an</button>
+      <div class="frow">
+        <button class="btn ghost small" data-action="ai-recipe-go">Anderer Vorschlag</button>
+        <button class="btn ghost small" data-action="ai-recipe-edit">Selbst anpassen</button>
+      </div>
+    </div>`);
+}
+
 /* Vorschau eines Gerichts, bevor es in den Kochplan wandert */
 function openMealPreviewSheet(iso, slot, rid) {
   const r = DATA.recipes.find(x => x.id === rid);
@@ -1529,6 +1545,7 @@ function handleAction(a, el) {
       DATA.notesAt[me()] = DATA.notes[me()] ? new Date().toISOString() : '';
       if (!DATA.notesLiked) DATA.notesLiked = { stefan: false, linda: false };
       DATA.notesLiked[me()] = false; // neuer Zettel, neues Glück
+      if (DATA.notes[me()]) pingPartner('Neuer Zettel an eurer Pinnwand', nameOf(me()) + ': ' + DATA.notes[me()].slice(0, 100));
       save(); closeSheet(); render(); toast('Angepinnt');
       if (DATA.notes[me()] && window.UZSync) {
         UZSync.notifyPartner(nameOf(me()) + ' hat dir einen Zettel an die Pinnwand gehängt', DATA.notes[me()].slice(0, 120));
@@ -2117,25 +2134,27 @@ function handleAction(a, el) {
       if (!window.UZSync || !UZSync.active()) { toast('Erst anmelden'); break; }
       openSheet('<h2>Einen Moment …</h2><div class="voicebox"><div class="live">Ich überlege mir ein Rezept.</div></div>');
       UZSync.invoke('ai', { mode: 'recipe', wish: state._aiWish || '', recipes: DATA.recipes.map(r => r.name) })
-        .then(r => {
-          const rec = r.recipe;
-          state._aiRecipe = rec;
-          openSheet(`<h2>${esc(rec.name)}</h2>
-            ${rec.ing.map(i => '<div class="row"><div class="grow"><div class="title" style="font-weight:500">' + esc(i) + '</div><div class="meta">' + esc(guessCat(i)) + '</div></div></div>').join('')}
-            ${rec.anleitung ? '<h2 style="font-size:17px;margin:14px 0 8px">Zubereitung</h2><div class="card" style="white-space:pre-wrap;font-size:14.5px;line-height:1.5">' + esc(rec.anleitung) + '</div>' : ''}
-            <div style="margin-top:12px;display:flex;flex-direction:column;gap:8px">
-              <button class="btn full" data-action="ai-recipe-save">Speichern</button>
-              <div class="frow">
-                <button class="btn ghost small" data-action="ai-recipe-go">Anderer Vorschlag</button>
-                <button class="btn ghost small" data-action="ai-recipe-edit">Anpassen</button>
-              </div>
-            </div>`);
-        })
+        .then(r => showAiRecipeResult(r.recipe))
         .catch(e => {
           openSheet(`<h2>Das hat nicht geklappt</h2>
             <p class="mut">${e.status === 503 ? 'Die KI ist noch nicht eingerichtet – der Claude-API-Schlüssel fehlt auf dem Server.' : esc(e.message)}</p>
             <div style="margin-top:14px"><button class="btn full" data-action="close-sheet">OK</button></div>`);
         });
+      break;
+    }
+    case 'ai-recipe-refine':
+      openSheet(`<h2>Was soll anders sein?</h2>
+        <p class="mut">„${esc((state._aiRecipe || {}).name || '')}“ wird entsprechend angepasst.</p>
+        <input class="f" id="aiChange" placeholder="z. B. ohne Pilze, mit mehr Protein, schärfer">
+        <div style="margin-top:14px"><button class="btn full" data-action="ai-recipe-refine-go">Anpassen lassen</button></div>`);
+      break;
+    case 'ai-recipe-refine-go': {
+      const aenderung = document.getElementById('aiChange').value.trim();
+      if (!aenderung) { toast('Sag kurz, was anders sein soll'); break; }
+      openSheet('<h2>Einen Moment …</h2><div class="voicebox"><div class="live">Ich passe das Rezept an.</div></div>');
+      UZSync.invoke('ai', { mode: 'recipe', wish: state._aiWish || '', recipes: DATA.recipes.map(r => r.name), previous: state._aiRecipe, aenderung })
+        .then(r => showAiRecipeResult(r.recipe))
+        .catch(e => { closeSheet(); toast('Das hat nicht geklappt: ' + e.message); });
       break;
     }
     case 'ai-recipe-save': {
