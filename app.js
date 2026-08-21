@@ -1550,6 +1550,8 @@ function renderSettings() {
     <input class="f" id="setIcsStefan" value="${esc(DATA.settings.icsStefan)}" placeholder="https://outlook.office365.com/…/calendar.ics">
     <label class="f">Lindas Kalender-Link</label>
     <input class="f" id="setIcsLinda" value="${esc(DATA.settings.icsLinda)}" placeholder="webcal://p66-caldav.icloud.com/published/…">
+    <label class="f">Lindas Arbeitskalender (Outlook) – erscheint nur als „Blockiert“</label>
+    <input class="f" id="setIcsLindaWork" value="${esc(DATA.settings.icsLindaWork || '')}" placeholder="https://outlook.office365.com/…/calendar.ics">
     <button class="btn small full" style="margin-top:12px" data-action="save-ics">Speichern &amp; laden</button>
     <div class="frow" style="margin-top:8px">
       <button class="btn ghost small" data-action="ics-refresh">Jetzt aktualisieren</button>
@@ -2396,6 +2398,7 @@ function handleAction(a, el) {
       const normIcs = u => u.trim().replace(/^webcal:\/\//i, 'https://');
       DATA.settings.icsStefan = normIcs(document.getElementById('setIcsStefan').value);
       DATA.settings.icsLinda = normIcs(document.getElementById('setIcsLinda').value);
+      DATA.settings.icsLindaWork = normIcs(document.getElementById('setIcsLindaWork').value);
       save(); refreshIcs(false); break;
     case 'push-on':
       (async () => {
@@ -2562,29 +2565,34 @@ async function refreshIcs(silent) {
   // webcal:// auch beim Abrufen normalisieren – falls der Link mit einer
   // älteren App-Version gespeichert wurde
   const norm = u => u.trim().replace(/^webcal:\/\//i, 'https://');
-  const jobs = [];
-  if (DATA.settings.icsStefan) jobs.push(['stefan', norm(DATA.settings.icsStefan)]);
-  if (DATA.settings.icsLinda) jobs.push(['linda', norm(DATA.settings.icsLinda)]);
+  const jobs = []; // [Person, URL, anonym?]
+  if (DATA.settings.icsStefan) jobs.push(['stefan', norm(DATA.settings.icsStefan), false]);
+  if (DATA.settings.icsLinda) jobs.push(['linda', norm(DATA.settings.icsLinda), false]);
+  if (DATA.settings.icsLindaWork) jobs.push(['linda', norm(DATA.settings.icsLindaWork), true]); // Arbeit: nur „Blockiert“
   if (!jobs.length) { if (!silent) toast('Keine ICS-Links hinterlegt'); return; }
   let ok = 0, fail = [];
-  const proPerson = [];
-  for (const [who, url] of jobs) {
+  // Mehrere Feeds pro Person erst sammeln, dann in einem Rutsch speichern
+  const collected = {};
+  for (const [who, url, anon] of jobs) {
     try {
-      const evs = await fetchICSUrl(url, who);
-      replaceIcsEvents(who, evs);
-      ok += evs.length;
-      proPerson.push(nameOf(who) + ' ' + evs.length);
-    } catch (e) {
-      // Direktabruf blockiert (CORS)? Über den Server-Proxy versuchen.
+      let evs;
       try {
+        evs = await fetchICSUrl(url, who);
+      } catch (e) {
+        // Direktabruf blockiert (CORS)? Über den Server-Proxy versuchen.
         if (!window.UZSync || !UZSync.active()) throw e;
         const text = await UZSync.fetchIcsProxy(url);
-        const evs = parseICS(text, who);
-        replaceIcsEvents(who, evs);
-        ok += evs.length;
-        proPerson.push(nameOf(who) + ' ' + evs.length);
-      } catch (e2) { fail.push(nameOf(who)); }
-    }
+        evs = parseICS(text, who);
+      }
+      if (anon) evs = evs.map(e => ({ ...e, title: 'Blockiert' }));
+      collected[who] = (collected[who] || []).concat(evs);
+      ok += evs.length;
+    } catch (e2) { fail.push(nameOf(who) + (anon ? ' (Arbeit)' : '')); }
+  }
+  const proPerson = [];
+  for (const who of Object.keys(collected)) {
+    replaceIcsEvents(who, collected[who]);
+    proPerson.push(nameOf(who) + ' ' + collected[who].length);
   }
   if (ok || !fail.length) {
     const n = new Date();
