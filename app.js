@@ -200,7 +200,7 @@ function renderHome() {
   html += `<h2 class="sect">Heute <span class="more" data-action="go-kalender">zum Kalender</span></h2>`;
   if (evToday.length) {
     for (const e of evToday) {
-      html += `<div class="row" style="border-left:4px solid ${WHO_COLOR(e.who)}"><span class="ric">${icon(e.src === 'ics' ? 'case' : 'cal', 18)}</span><div class="grow"><div class="title">${esc(e.title)}</div><div class="meta">${e.time ? esc(e.time) + ' Uhr · ' : ''}${e.src === 'ics' ? 'Outlook · ' : ''}${e.who === 'beide' ? 'Wir beide' : esc(nameOf(e.who))}</div></div></div>`;
+      html += `<div class="row" style="border-left:4px solid ${WHO_COLOR(e.who)}"><span class="ric">${icon(e.src === 'ics' ? 'case' : 'cal', 18)}</span><div class="grow"><div class="title">${esc(e.title)}</div><div class="meta">${e.time ? esc(e.time) + ' Uhr · ' : ''}${e.src === 'ics' ? 'Kalender · ' : ''}${e.who === 'beide' ? 'Wir beide' : esc(nameOf(e.who))}</div></div></div>`;
     }
   } else {
     html += `<div class="card"><p class="mut" style="margin:0">Keine Termine heute.</p></div>`;
@@ -474,14 +474,14 @@ function calLegend() {
     <span><i class="dot stefan"></i>Stefan</span>
     <span><i class="dot linda"></i>Linda</span>
     <span><i class="dot beide"></i>Gemeinsam</span>
-    <span style="display:inline-flex;align-items:center;gap:4px">${icon('case', 13)} Outlook</span>
+    <span style="display:inline-flex;align-items:center;gap:4px">${icon('case', 13)} Outlook/Apple</span>
   </div>`;
 }
 
 function calEvRow(e, compact) {
   const borderColor = e.src === 'special' ? '#B98A3D' : WHO_COLOR(e.who);
   const ic = e.src === 'special' ? 'star' : e.src === 'ics' ? 'case' : 'cal';
-  const quelle = e.src === 'special' ? 'besonderer Tag' : e.src === 'ics' ? 'Outlook-Termin' : 'eingetragen';
+  const quelle = e.src === 'special' ? 'besonderer Tag' : e.src === 'ics' ? 'Kalender-Abo' : 'eingetragen';
   const editable = !e.src;
   return `<div class="row" style="border-left:4px solid ${borderColor};${compact ? 'padding:9px 12px;margin-bottom:6px' : ''}">
     <span class="ric" ${e.src === 'special' ? 'style="color:#B98A3D"' : ''}>${icon(ic, compact ? 16 : 18)}</span>
@@ -601,7 +601,7 @@ function renderCalMonat() {
     html += `<div class="weekrow" data-action="cal-day" data-iso="${iso}">
       <div class="wd2">${WD[(d.getDay() + 6) % 7]}<br><b>${d.getDate()}.</b></div>
       <div class="wevs">${evs.map(e =>
-        `<div class="wev"><i class="dot ${e.who === 'linda' ? 'linda' : e.who === 'stefan' ? 'stefan' : 'beide'}"></i>${e.time ? '<b>' + esc(e.time) + '</b> ' : ''}${esc(e.title)}${e.src === 'ics' ? ' <span class="mut">· Outlook</span>' : ''}</div>`
+        `<div class="wev"><i class="dot ${e.who === 'linda' ? 'linda' : e.who === 'stefan' ? 'stefan' : 'beide'}"></i>${e.time ? '<b>' + esc(e.time) + '</b> ' : ''}${esc(e.title)}${e.src === 'ics' ? ' <span class="mut">· Abo</span>' : ''}</div>`
       ).join('')}</div>
     </div>`;
   }
@@ -1480,13 +1480,15 @@ function renderSettings() {
   <h2 class="sect">Gemeinsamer Sync</h2>
   <div class="card">${syncHtml}</div>
 
-  <h2 class="sect">Outlook-Kalender</h2>
+  <h2 class="sect">Kalender verbinden (Outlook &amp; Apple)</h2>
   <div class="card">
-    <div class="hint" style="margin-bottom:10px">In Outlook (Web): Einstellungen → Kalender → <b>Freigegebene Kalender</b> → „Kalender veröffentlichen“ → den <b>ICS-Link</b> kopieren und hier einfügen. Die Termine werden dann bei jedem App-Start und alle 30 Minuten automatisch aktualisiert.</div>
-    <label class="f">Stefans ICS-Link</label>
+    <div class="hint" style="margin-bottom:10px"><b>Outlook (Web):</b> Einstellungen → Kalender → <b>Freigegebene Kalender</b> → „Kalender veröffentlichen“ → den <b>ICS-Link</b> kopieren.<br><br>
+    <b>Apple-Kalender (iPhone):</b> Kalender-App → unten „Kalender“ → beim gewünschten Kalender aufs <b>ⓘ</b> → <b>„Öffentlicher Kalender“</b> einschalten → „Link teilen“ → <b>Link kopieren</b> und hier einfügen (beginnt mit webcal:// – passt so).<br><br>
+    Die Termine werden bei jedem App-Start und alle 30 Minuten automatisch aktualisiert.</div>
+    <label class="f">Stefans Kalender-Link</label>
     <input class="f" id="setIcsStefan" value="${esc(DATA.settings.icsStefan)}" placeholder="https://outlook.office365.com/…/calendar.ics">
-    <label class="f">Lindas ICS-Link</label>
-    <input class="f" id="setIcsLinda" value="${esc(DATA.settings.icsLinda)}" placeholder="https://outlook.office365.com/…/calendar.ics">
+    <label class="f">Lindas Kalender-Link</label>
+    <input class="f" id="setIcsLinda" value="${esc(DATA.settings.icsLinda)}" placeholder="webcal://p66-caldav.icloud.com/published/…">
     <button class="btn small full" style="margin-top:12px" data-action="save-ics">Speichern &amp; laden</button>
     <div class="frow" style="margin-top:8px">
       <button class="btn ghost small" data-action="ics-refresh">Jetzt aktualisieren</button>
@@ -2294,8 +2296,10 @@ function handleAction(a, el) {
 
     /* Einstellungen */
     case 'save-ics':
-      DATA.settings.icsStefan = document.getElementById('setIcsStefan').value.trim();
-      DATA.settings.icsLinda = document.getElementById('setIcsLinda').value.trim();
+      // Apple teilt Kalender als webcal:// – das ist derselbe Feed über https
+      const normIcs = u => u.trim().replace(/^webcal:\/\//i, 'https://');
+      DATA.settings.icsStefan = normIcs(document.getElementById('setIcsStefan').value);
+      DATA.settings.icsLinda = normIcs(document.getElementById('setIcsLinda').value);
       save(); refreshIcs(false); break;
     case 'push-on':
       (async () => {
@@ -2488,12 +2492,12 @@ async function refreshIcs(silent) {
   render();
   if (fail.length) {
     if (silent) { console.warn('ICS-Refresh fehlgeschlagen für', fail.join(', ')); return; }
-    openSheet(`<h2>Outlook teilweise blockiert</h2>
-      <p class="mut">Der Kalender von ${esc(fail.join(' & '))} konnte nicht direkt geladen werden – das liegt meist an Browser-Sicherheitsregeln (CORS) bei Outlook-Links.</p>
+    openSheet(`<h2>Kalender teilweise blockiert</h2>
+      <p class="mut">Der Kalender von ${esc(fail.join(' & '))} konnte nicht direkt geladen werden – das liegt meist an Browser-Sicherheitsregeln (CORS) oder einem abgelaufenen Link.</p>
       <p class="mut" style="margin-top:8px"><b>Plan B:</b> Kalender in Outlook als .ics-Datei exportieren und über den Datei-Import im Kalender-Tab laden. Mit dem Sync-Server lösen wir das dauerhaft.</p>
       <div style="margin-top:14px"><button class="btn full" data-action="close-sheet">Alles klar</button></div>`);
   } else if (!silent) {
-    toast(ok + ' Outlook-Termine geladen');
+    toast(ok + ' Kalender-Termine geladen');
   }
 }
 
