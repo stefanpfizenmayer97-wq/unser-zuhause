@@ -1550,7 +1550,7 @@ function renderSettings() {
     <input class="f" id="setIcsStefan" value="${esc(DATA.settings.icsStefan)}" placeholder="https://outlook.office365.com/…/calendar.ics">
     <label class="f">Lindas Kalender-Link</label>
     <input class="f" id="setIcsLinda" value="${esc(DATA.settings.icsLinda)}" placeholder="webcal://p66-caldav.icloud.com/published/…">
-    <label class="f">Lindas Arbeitskalender (Outlook) – erscheint nur als „Blockiert“</label>
+    <label class="f">Lindas Arbeitskalender – erscheint nur als „Outlook“</label>
     <input class="f" id="setIcsLindaWork" value="${esc(DATA.settings.icsLindaWork || '')}" placeholder="https://outlook.office365.com/…/calendar.ics">
     <button class="btn small full" style="margin-top:12px" data-action="save-ics">Speichern &amp; laden</button>
     <div class="frow" style="margin-top:8px">
@@ -2584,7 +2584,7 @@ async function refreshIcs(silent) {
         const text = await UZSync.fetchIcsProxy(url);
         evs = parseICS(text, who);
       }
-      if (anon) evs = evs.map(e => ({ ...e, title: 'Blockiert' }));
+      if (anon) evs = evs.map(e => ({ ...e, title: 'Outlook' }));
       collected[who] = (collected[who] || []).concat(evs);
       ok += evs.length;
     } catch (e2) { fail.push(nameOf(who) + (anon ? ' (Arbeit)' : '')); }
