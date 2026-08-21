@@ -302,7 +302,7 @@ input.f:focus, textarea.f:focus, select.f:focus { outline: 2px solid var(--sage)
    Stefan = Schwarz, Linda = Rot, Gemeinsam = Gelb */
 .dot { width: 6px; height: 6px; border-radius: 50%; background: #cdc673; box-shadow: 0 0 0 1px rgba(255,255,255,0.8); }
 .dot.linda { background: #eeb4b4; }
-.dot.stefan { background: #40E0D0; }
+.dot.stefan { background: #79cdcd; }
 .day.sel .dot { box-shadow: 0 0 0 1px rgba(0,0,0,0.15); }
 
 /* ---------- Kochplan ---------- */
