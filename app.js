@@ -747,6 +747,67 @@ function openMealSheet(iso, slot) {
   `);
 }
 
+/* Eine per Sprache erkannte Aktion direkt ausführen (für Mehrfach-Diktate).
+   Gibt eine Kurzbeschreibung zurück – oder null, wenn sie einzeln bestätigt werden muss. */
+function executeVoiceAction(a) {
+  const who = (a.who === 'stefan' || a.who === 'linda' || a.who === 'beide') ? a.who : 'beide';
+  switch (a.kind) {
+    case 'shopping': {
+      for (const it of a.items || []) addShoppingItem(it);
+      pingBatched('shop', 'Einkaufsliste ergänzt', (a.items || []).join(', '));
+      return 'Einkauf: ' + (a.items || []).join(', ');
+    }
+    case 'event': {
+      const date = a.date || todayISO();
+      DATA.events.push({ id: uid(), title: a.title, date, time: a.time || '', who, repeat: '' });
+      return 'Termin ' + a.title + ' (' + fmtShort(date) + ')';
+    }
+    case 'todo': {
+      DATA.todos.push({ id: uid(), title: a.title, who, due: a.date || '', done: false });
+      return 'To-do ' + a.title;
+    }
+    case 'message': {
+      const n = new Date();
+      DATA.messages.push({ id: uid(), from: me(), text: a.title, at: n.toISOString(), ts: WD[(n.getDay() + 6) % 7] + ' ' + String(n.getHours()).padStart(2, '0') + ':' + String(n.getMinutes()).padStart(2, '0') });
+      if (window.UZSync) UZSync.notifyPartner('Nachricht von ' + nameOf(me()), a.title.slice(0, 120));
+      return 'Nachricht an ' + nameOf(partner());
+    }
+    case 'note': {
+      DATA.notes[me()] = a.title;
+      if (!DATA.notesAt) DATA.notesAt = { stefan: '', linda: '' };
+      DATA.notesAt[me()] = new Date().toISOString();
+      if (!DATA.notesLiked) DATA.notesLiked = { stefan: false, linda: false };
+      DATA.notesLiked[me()] = false;
+      pingPartner('Neuer Zettel an eurer Pinnwand', nameOf(me()) + ': ' + a.title.slice(0, 100));
+      return 'Pinnwand-Zettel';
+    }
+    case 'idea': DATA.us.ideas.push(a.title); return 'Date-Idee ' + a.title;
+    case 'chore': {
+      const rot = who === 'beide' ? ['stefan', 'linda'] : [who];
+      DATA.tasks.push({ id: uid(), title: a.title, freq: a.freq || 'weekly', day: null, anchor: toISO(startOfWeek(new Date())), rotation: rot, turn: 0, doneKey: null });
+      return 'Aufgabe ' + a.title;
+    }
+    case 'expense': {
+      const amount = parseFloat(String(a.amount).replace(',', '.'));
+      if (!amount) return 'Ausgabe übersprungen (Betrag unklar)';
+      const paidBy = (a.who === 'stefan' || a.who === 'linda') ? a.who : me();
+      DATA.expenses.push({ id: uid(), title: a.title || 'Ausgabe', amount: Math.round(amount * 100) / 100, paidBy, date: todayISO(), settled: false });
+      return 'Ausgabe ' + fmtEuro(amount);
+    }
+    case 'meal': {
+      setMeal(a.date || todayISO(), 'a', { name: a.dish });
+      return 'Kochplan: ' + a.dish;
+    }
+    case 'presence': {
+      const persons = who === 'beide' ? [me()] : [who];
+      const slots = a.slot === 'beide' || !a.slot ? ['m', 'a'] : [a.slot];
+      for (const p of persons) for (const s of slots) setPresence(a.date || todayISO(), p, s, a.present !== 'nein');
+      return 'Wer-ist-da aktualisiert';
+    }
+    default: return null; // recipe/workout: einzeln bestätigen
+  }
+}
+
 /* KI-Rezept-Vorschlag anzeigen (auch nach Änderungswünschen) */
 function showAiRecipeResult(rec) {
   state._aiRecipe = rec;
@@ -1494,7 +1555,16 @@ function renderSettings() {
       <button class="btn ghost small" data-action="ics-refresh">Jetzt aktualisieren</button>
       <label class="btn ghost small" style="cursor:pointer">Datei importieren<input type="file" accept=".ics,text/calendar" id="icsFileStefan" hidden></label>
     </div>
-    <div class="hint" style="margin-top:8px">Aktualisiert sich automatisch bei jedem App-Start und alle 30 Minuten.${DATA.icsEvents.length ? ' Aktuell ' + DATA.icsEvents.length + ' Termine geladen' + (DATA.settings.icsLast ? ' · Stand ' + esc(DATA.settings.icsLast) : '') + '.' : ''}</div>
+    <div class="hint" style="margin-top:8px">Aktualisiert sich automatisch bei jedem App-Start und alle 30 Minuten.${(() => {
+      const s = DATA.icsEvents.filter(e => e.who === 'stefan');
+      const l = DATA.icsEvents.filter(e => e.who === 'linda');
+      const nextL = l.filter(e => e.date >= todayISO()).sort((a, b) => a.date < b.date ? -1 : 1)[0];
+      const nextS = s.filter(e => e.date >= todayISO()).sort((a, b) => a.date < b.date ? -1 : 1)[0];
+      let t = '<br><b>Gespeichert:</b> Stefan ' + s.length + ' · Linda ' + l.length + ' Termine' + (DATA.settings.icsLast ? ' · Stand ' + esc(DATA.settings.icsLast) : '');
+      if (nextS) t += '<br>Stefans nächster: ' + esc(nextS.title) + ' am ' + esc(fmtShort(nextS.date));
+      if (nextL) t += '<br>Lindas nächster: ' + esc(nextL.title) + ' am ' + esc(fmtShort(nextL.date));
+      return t;
+    })()}</div>
   </div>
 
   <h2 class="sect">Benachrichtigungen</h2>
@@ -1990,6 +2060,32 @@ function handleAction(a, el) {
       DATA.events.push({ id: uid(), title: el.dataset.title, date: el.dataset.iso, time, who: 'beide', repeat: '' });
       save(); closeSheet(); render(); toast('Gemeinsames Training steht im Kalender');
       pingPartner('Gemeinsames Training?', el.dataset.title + ' · ' + fmtShort(el.dataset.iso) + ', ' + time + ' Uhr – ' + nameOf(me()) + ' hat es eingetragen');
+      break;
+    }
+
+    /* Sprachassistent: mehrere Aktionen auf einmal */
+    case 'voice-multi-go': {
+      const acts = window._voiceActions || [];
+      const done = [];
+      const deferred = [];
+      for (const a of acts) {
+        const r = executeVoiceAction(a);
+        if (r === null) deferred.push(a);
+        else done.push(r);
+      }
+      save(); closeSheet(); render();
+      if (done.length) {
+        toast(done.length + ' Dinge eingetragen');
+        pingBatched('multi', nameOf(me()) + ' hat einiges eingetragen', done.join(' · '), 60000);
+      }
+      // Komplexe Sachen (Rezept, Workout) danach einzeln durchgehen
+      if (deferred.length) {
+        const a = deferred[0];
+        setTimeout(() => {
+          if (a.kind === 'recipe') confirmVoice({ kind: 'recipe', name: a.title, ing: a.items || [], anleitung: a.anleitung || '' });
+          else if (a.kind === 'workout') { state.tab = 'training'; render(); openWorkoutForQuery(a.title); }
+        }, 350);
+      }
       break;
     }
 

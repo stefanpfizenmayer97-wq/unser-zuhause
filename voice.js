@@ -182,7 +182,9 @@ async function understandVoice(text) {
     openSheet('<h2>Einen Moment …</h2><div class="voicebox"><div class="live">Ich überlege, was du meinst.</div></div>');
     try {
       const r = await UZSync.invoke('ai', { mode: 'parse', text, today: todayISO(), speaker: nameOf(me()) });
-      const a = r.action || {};
+      const actions = (r.actions && r.actions.length ? r.actions : (r.action ? [r.action] : []));
+      if (actions.length > 1) return confirmVoiceMulti(actions);
+      const a = actions[0] || {};
       if (a.kind === 'shopping' && (a.items || []).length) return confirmVoice({ kind: 'shopping', items: a.items });
       if (a.kind === 'message' && a.title) return confirmVoice({ kind: 'message', text: a.title });
       if (a.kind === 'note' && a.title) return confirmVoice({ kind: 'note', text: a.title });
@@ -200,6 +202,37 @@ async function understandVoice(text) {
     }
   }
   confirmVoice(parseVoice(text));
+}
+
+/* Mehrere Aktionen in einem Diktat: Übersicht zeigen, dann alles auf einmal eintragen */
+function describeVoiceAction(a) {
+  const wer = a.who && a.who !== 'beide' ? ' (' + nameOf(a.who) + ')' : '';
+  switch (a.kind) {
+    case 'shopping': return 'Einkaufsliste: ' + (a.items || []).join(', ');
+    case 'event': return 'Termin: ' + a.title + ' am ' + fmtShort(a.date || todayISO()) + (a.time ? ', ' + a.time + ' Uhr' : '') + wer;
+    case 'todo': return 'To-do: ' + a.title + (a.date ? ' bis ' + fmtShort(a.date) : '') + wer;
+    case 'message': return 'Nachricht an ' + nameOf(partner()) + ': „' + a.title + '“';
+    case 'note': return 'Pinnwand-Zettel: „' + a.title + '“';
+    case 'idea': return 'Date-Idee: ' + a.title;
+    case 'chore': return 'Aufgabe: ' + a.title + ' (' + (FREQ_LABEL[a.freq] || 'jede Woche') + ')' + wer;
+    case 'expense': return 'Ausgabe: ' + a.amount + ' € für ' + a.title;
+    case 'meal': return 'Kochplan: ' + a.dish + ' am ' + fmtShort(a.date || todayISO());
+    case 'presence': return 'Wer-ist-da: ' + fmtShort(a.date) + ' ' + (a.present === 'nein' ? 'nicht da' : 'da');
+    case 'recipe': return 'Neues Rezept: ' + a.title + ' (lege ich danach einzeln an)';
+    case 'workout': return 'Workout: ' + a.title + ' (zeige ich danach)';
+    default: return a.title || a.kind;
+  }
+}
+function confirmVoiceMulti(actions) {
+  window._voiceActions = actions;
+  openSheet(`
+    <h2>${actions.length} Dinge verstanden</h2>
+    ${actions.map(a => '<div class="row"><span class="ric">' + icon('check', 15) + '</span><div class="grow"><div class="title" style="font-weight:500">' + esc(describeVoiceAction(a)) + '</div></div></div>').join('')}
+    <div style="margin-top:14px;display:flex;flex-direction:column;gap:8px">
+      <button class="btn full" data-action="voice-multi-go">Alles eintragen</button>
+      <button class="btn ghost small full" data-action="close-sheet">Abbrechen</button>
+    </div>
+  `);
 }
 
 function stopVoiceRecognition() {
