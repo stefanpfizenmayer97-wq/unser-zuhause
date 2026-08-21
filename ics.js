@@ -67,5 +67,8 @@ async function fetchICSUrl(url, who) {
 
 function replaceIcsEvents(who, events) {
   DATA.icsEvents = DATA.icsEvents.filter(e => e.who !== who).concat(events);
+  // Zeitstempel pro Person: Beim Sync gewinnt immer der frischere Abruf
+  if (!DATA.icsFetchedAt) DATA.icsFetchedAt = {};
+  DATA.icsFetchedAt[who] = new Date().toISOString();
   save();
 }

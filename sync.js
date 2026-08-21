@@ -113,12 +113,27 @@ window.UZSync = (() => {
     applyingRemote = true;
     // Identität kommt vom Login, nicht aus den gesyncten Daten
     const meKeep = EMAIL_TO_PERSON[email().toLowerCase()] || DATA.settings.me;
+    // Kalender-Abos sichern: pro Person gewinnt der frischere Abruf – sonst kann
+    // ein älterer Datenstand vom anderen Gerät frisch geladene Termine verdrängen
+    const lokalIcs = DATA.icsEvents || [];
+    const lokalAt = DATA.icsFetchedAt || {};
     DATA = remote;
     DATA.settings = DATA.settings || {};
     DATA.settings.me = meKeep;
+    // Pro Person: Hat dieses Gerät die frischeren Kalender-Termine, bleiben sie erhalten
+    let icsKept = false;
+    for (const person of ['stefan', 'linda']) {
+      const remoteAt = (DATA.icsFetchedAt || {})[person] || '';
+      if ((lokalAt[person] || '') > remoteAt) {
+        DATA.icsEvents = (DATA.icsEvents || []).filter(e => e.who !== person).concat(lokalIcs.filter(e => e.who === person));
+        if (!DATA.icsFetchedAt) DATA.icsFetchedAt = {};
+        DATA.icsFetchedAt[person] = lokalAt[person];
+        icsKept = true;
+      }
+    }
     if (typeof cleanupHolidayIcs === 'function') cleanupHolidayIcs();
     // Basis-Rezepte wieder ergänzen, falls der Cloud-Stand sie noch nicht kennt
-    const migrated = typeof ensureBaseRecipes === 'function' && ensureBaseRecipes();
+    const migrated = (typeof ensureBaseRecipes === 'function' && ensureBaseRecipes()) || icsKept;
     DATA._syncedAt = ts;
     localStorage.setItem(DB_KEY, JSON.stringify(DATA));
     if (typeof render === 'function') render();
