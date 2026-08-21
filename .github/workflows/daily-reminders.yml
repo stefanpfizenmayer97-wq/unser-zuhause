@@ -2,8 +2,9 @@ name: Tägliche Erinnerungen
 
 on:
   schedule:
-    - cron: "0 5 * * *"  # Morgens: 07:00 Sommerzeit / 06:00 Winterzeit (Berlin)
-    - cron: "0 17 * * *" # Abends: 19:00 Sommerzeit / 18:00 Winterzeit (Blick auf morgen)
+    - cron: "0 5 * * *"    # Morgens: 07:00 Sommerzeit / 06:00 Winterzeit (Berlin)
+    - cron: "0 17 * * *"   # Abends: 19:00 Sommerzeit / 18:00 Winterzeit (Blick auf morgen)
+    - cron: "*/15 6-22 * * *" # Alle 15 Min. tagsüber: Erinnerung ~30 Min. vor Terminen
   workflow_dispatch: {}
 
 jobs:
@@ -12,6 +13,8 @@ jobs:
     steps:
       - name: Erinnerungs-Funktion aufrufen
         run: |
+          SLOT=""
+          if [ "${{ github.event.schedule }}" = "*/15 6-22 * * *" ]; then SLOT="?slot=soon"; fi
           curl -fsS -X POST \
-            "https://kpzutmtkouwamtqcgmux.supabase.co/functions/v1/daily-reminders" \
+            "https://kpzutmtkouwamtqcgmux.supabase.co/functions/v1/daily-reminders${SLOT}" \
             -H "x-cron-secret: ${{ secrets.CRON_SECRET }}"

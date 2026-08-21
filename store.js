@@ -167,7 +167,9 @@ function repeatMatches(e, iso) {
 }
 function eventsOn(iso) {
   const own = DATA.events
-    .filter(e => e.repeat ? repeatMatches(e, iso) : e.date === iso)
+    .filter(e => e.repeat
+      ? repeatMatches(e, iso)
+      : (e.endDate ? (e.date <= iso && iso <= e.endDate) : e.date === iso))
     .map(e => e.repeat ? { ...e, date: iso } : e);
   const ics = DATA.icsEvents.filter(e => e.date === iso);
   // Besondere Tage (Jahrestage etc.) erscheinen jedes Jahr im Kalender

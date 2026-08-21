@@ -486,7 +486,7 @@ function calEvRow(e, compact) {
   return `<div class="row" style="border-left:4px solid ${borderColor};${compact ? 'padding:9px 12px;margin-bottom:6px' : ''}">
     <span class="ric" ${e.src === 'special' ? 'style="color:#B98A3D"' : ''}>${icon(ic, compact ? 16 : 18)}</span>
     <div class="grow" ${editable ? 'data-action="edit-event" data-id="' + e.id + '"' : ''}><div class="title" ${compact ? 'style="font-size:14px"' : ''}>${esc(e.title)}</div>
-    <div class="meta">${e.time ? esc(e.time) + ' Uhr · ' : ''}${quelle} · ${e.who === 'beide' ? 'gemeinsam' : esc(nameOf(e.who))}${e.repeat ? ' · ↻ ' + REPEAT_LABEL[e.repeat] : ''}</div></div>
+    <div class="meta">${e.time ? esc(e.time) + ' Uhr · ' : ''}${e.allday ? 'ganztägig · ' : ''}${e.endDate ? 'bis ' + esc(fmtShort(e.endDate)) + ' · ' : ''}${quelle} · ${e.who === 'beide' ? 'gemeinsam' : esc(nameOf(e.who))}${e.repeat ? ' · ↻ ' + REPEAT_LABEL[e.repeat] : ''}</div></div>
     ${whoChip(e.who)}
     ${editable ? '<button class="check" data-action="del-event" data-id="' + e.id + '" style="border-color:#E0C4B8;color:#A54B32">' + icon('x', 13) + '</button>' : ''}
   </div>`;
@@ -621,6 +621,11 @@ function openEventSheet(dateISO, id) {
       <div><label class="f">Datum</label><input class="f" id="evDate" type="date" value="${ev ? ev.date : dateISO}"></div>
       <div><label class="f">Uhrzeit</label><input class="f" id="evTime" type="time" value="${ev ? esc(ev.time || '') : ''}"></div>
     </div>
+    <label style="display:flex;gap:10px;align-items:center;margin:10px 2px 4px;font-size:14px">
+      <input type="checkbox" id="evAllday" ${ev && ev.allday ? 'checked' : ''}> Ganztägig (ohne Uhrzeit)
+    </label>
+    <label class="f">Bis (bei mehreren Tagen, sonst leer lassen)</label>
+    <input class="f" id="evEnd" type="date" value="${ev && ev.endDate ? ev.endDate : ''}">
     <div class="frow">
       <div><label class="f">Wer?</label>
       <select class="f" id="evWho">
@@ -1626,7 +1631,10 @@ function handleAction(a, el) {
       const title = document.getElementById('evTitle').value.trim();
       const date = document.getElementById('evDate').value;
       if (!title || !date) break;
-      const fields = { title, date, time: document.getElementById('evTime').value, who: document.getElementById('evWho').value, repeat: document.getElementById('evRepeat').value };
+      const allday = document.getElementById('evAllday').checked;
+      let endDate = document.getElementById('evEnd').value || '';
+      if (endDate && endDate <= date) endDate = ''; // „bis“ nur, wenn wirklich später
+      const fields = { title, date, time: allday ? '' : document.getElementById('evTime').value, allday, endDate, who: document.getElementById('evWho').value, repeat: allday || endDate ? '' : document.getElementById('evRepeat').value };
       const ev = id ? DATA.events.find(e => e.id === id) : null;
       const before = ev ? { ...ev } : null;
       if (ev) Object.assign(ev, fields);
