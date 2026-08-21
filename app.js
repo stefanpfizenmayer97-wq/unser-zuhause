@@ -467,7 +467,7 @@ function renderFinanzen() {
 }
 
 /* ---------- Kalender ---------- */
-const WHO_COLOR = w => w === 'linda' ? '#E02D2D' : w === 'stefan' ? '#1E1E1E' : '#F5B301';
+const WHO_COLOR = w => w === 'linda' ? '#eeb4b4' : w === 'stefan' ? '#40E0D0' : '#cdc673';
 
 function calLegend() {
   return `<div class="legend">
