@@ -2559,16 +2559,21 @@ function handleAction(a, el) {
 
 /* ---------- Outlook laden ---------- */
 async function refreshIcs(silent) {
+  // webcal:// auch beim Abrufen normalisieren – falls der Link mit einer
+  // älteren App-Version gespeichert wurde
+  const norm = u => u.trim().replace(/^webcal:\/\//i, 'https://');
   const jobs = [];
-  if (DATA.settings.icsStefan) jobs.push(['stefan', DATA.settings.icsStefan]);
-  if (DATA.settings.icsLinda) jobs.push(['linda', DATA.settings.icsLinda]);
+  if (DATA.settings.icsStefan) jobs.push(['stefan', norm(DATA.settings.icsStefan)]);
+  if (DATA.settings.icsLinda) jobs.push(['linda', norm(DATA.settings.icsLinda)]);
   if (!jobs.length) { if (!silent) toast('Keine ICS-Links hinterlegt'); return; }
   let ok = 0, fail = [];
+  const proPerson = [];
   for (const [who, url] of jobs) {
     try {
       const evs = await fetchICSUrl(url, who);
       replaceIcsEvents(who, evs);
       ok += evs.length;
+      proPerson.push(nameOf(who) + ' ' + evs.length);
     } catch (e) {
       // Direktabruf blockiert (CORS)? Über den Server-Proxy versuchen.
       try {
@@ -2577,6 +2582,7 @@ async function refreshIcs(silent) {
         const evs = parseICS(text, who);
         replaceIcsEvents(who, evs);
         ok += evs.length;
+        proPerson.push(nameOf(who) + ' ' + evs.length);
       } catch (e2) { fail.push(nameOf(who)); }
     }
   }
@@ -2593,7 +2599,7 @@ async function refreshIcs(silent) {
       <p class="mut" style="margin-top:8px"><b>Plan B:</b> Kalender in Outlook als .ics-Datei exportieren und über den Datei-Import im Kalender-Tab laden. Mit dem Sync-Server lösen wir das dauerhaft.</p>
       <div style="margin-top:14px"><button class="btn full" data-action="close-sheet">Alles klar</button></div>`);
   } else if (!silent) {
-    toast(ok + ' Kalender-Termine geladen');
+    toast('Geladen: ' + proPerson.join(' · ') + ' Termine');
   }
 }
 
